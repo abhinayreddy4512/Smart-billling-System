@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  shopName  String?
+  ownerName String?
+  phone     String?
+  gstNo     String?
+  village   String?
+  mandal    String?
+  district  String?
+  state     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Farmer {
+  id               String            @id // e.g. 1001
+  name             String
+  phone            String
+  email            String?
+  photoUrl         String?           @db.Text
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  bills            Bill[]
+  cashTransactions CashTransaction[]
+  cropLogs         CropLog[]
+  cropSettlements  CropSettlement[]
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  category  String   // 'FERTILIZER' or 'PESTICIDE'
+  name      String
+  size      String?  // '50kg', '1 Litre', etc.
+  quantity  Int      @default(0) // Number of items
+  price     Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Bill {
+  id         String   @id @default(cuid())
+  farmerId   String
+  farmer     Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  category   String   // 'FERTILIZER' or 'PESTICIDE'
+  product    String
+  quantity   Int
+  price      Float
+  total      Float
+  photoProof String?  @db.Text
+  date       DateTime @default(now())
+}
+
+model CashTransaction {
+  id         String   @id @default(cuid())
+  farmerId   String
+  farmer     Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  type       String   // 'TAKEN' or 'GIVEN'
+  amount     Float
+  photoProof String?  @db.Text
+  date       DateTime @default(now())
+}
+
+model CropLog {
+  id          String   @id @default(cuid())
+  farmerId    String
+  farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  cropType    String   // 'COTTON' or 'MIRCHI'
+  bagWeights  Json     // array of numbers
+  totalWeight Float
+  price       Float?   @default(0) // price per kg
+  date        DateTime @default(now())
+}
+
+model CropSettlement {
+  id          String   @id @default(cuid())
+  farmerId    String
+  farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  amount      Float
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}

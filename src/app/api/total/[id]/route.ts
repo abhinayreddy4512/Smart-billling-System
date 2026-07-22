@@ -53,13 +53,28 @@ export async function GET(
         return { ...cash, days, interest, finalAmount: cash.amount + interest };
       } else {
         // GIVEN: subtracts from the debt
-        // We calculate interest and deduct it from the running totals,
-        // but return positive amounts so the frontend can display them nicely.
         interest = cash.amount * INTEREST_RATE_PER_MONTH * months;
         totalPrincipal -= cash.amount;
         totalInterest -= interest;
         return { ...cash, days, interest: interest, finalAmount: (cash.amount + interest) };
       }
+    });
+
+    // Process Crops
+    const processedCrops = farmer.cropLogs.map((log) => {
+      const amount = (log.totalWeight / 100) * (log.price || 0);
+      const days = Math.max(0, differenceInDays(today, new Date(log.date)));
+      const months = days / 30;
+      let interest = 0;
+      
+      if (!log.isSettled) {
+        // Unsettled crops act like money GIVEN (subtracts from farmer's debt)
+        interest = amount * INTEREST_RATE_PER_MONTH * months;
+        totalPrincipal -= amount;
+        totalInterest -= interest;
+      }
+      
+      return { ...log, amount, days, interest, finalAmount: amount + interest };
     });
 
     const finalAmount = totalPrincipal + totalInterest;
@@ -68,6 +83,7 @@ export async function GET(
       farmer,
       processedBills,
       processedCash,
+      processedCrops,
       summary: {
         totalPrincipal,
         totalInterest,

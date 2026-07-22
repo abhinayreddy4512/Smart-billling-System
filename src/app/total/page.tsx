@@ -38,7 +38,7 @@ export default function TotalFinalPage() {
     if (!data) return;
 
     const doc = new jsPDF();
-    const { farmer, summary, processedBills, processedCash } = data;
+    const { farmer, summary, processedBills, processedCash, processedCrops } = data;
 
     // Header
     doc.setFontSize(22);
@@ -61,6 +61,8 @@ export default function TotalFinalPage() {
     const fertilizers = processedBills.filter((b: any) => b.category === "FERTILIZER");
     const cashTaken = processedCash.filter((c: any) => c.type === "TAKEN");
     const cashGiven = processedCash.filter((c: any) => c.type === "GIVEN");
+    const unsettledCrops = processedCrops.filter((c: any) => !c.isSettled);
+    const settledCrops = processedCrops.filter((c: any) => c.isSettled);
 
     const sumFinal = (arr: any[]) => arr.reduce((acc, item) => acc + item.finalAmount, 0);
 
@@ -68,7 +70,8 @@ export default function TotalFinalPage() {
     const totalFertilizers = sumFinal(fertilizers);
     const totalTaken = sumFinal(cashTaken);
     const totalGiven = sumFinal(cashGiven);
-    const grandTotal = totalPesticides + totalFertilizers + totalTaken - totalGiven;
+    const totalUnsettledCrops = sumFinal(unsettledCrops);
+    const grandTotal = totalPesticides + totalFertilizers + totalTaken - totalGiven - totalUnsettledCrops;
 
     let startY = 65;
 
@@ -81,7 +84,7 @@ export default function TotalFinalPage() {
       
       const rows = items.map((i: any) => [
         format(new Date(i.date), "dd/MM/yyyy"),
-        i.product || i.type,
+        i.product || i.cropType || i.type,
         `Rs ${(i.total || i.amount).toFixed(2)}`,
         `${i.days} days`,
         `Rs ${i.interest.toFixed(2)}`,
@@ -103,6 +106,36 @@ export default function TotalFinalPage() {
     renderTable("Fertilizers (Purchases)", fertilizers, [41, 128, 185]); // Blue
     renderTable("Cash Taken (Loans)", cashTaken, [211, 84, 0]); // Orange
     renderTable("Cash Given (Repayments)", cashGiven, [39, 174, 96]); // Green
+    
+    // As per user request: "if not settled add that amount in pdf with interest to money given section"
+    renderTable("Unsettled Crops (Treated as Money Given)", unsettledCrops, [39, 174, 96]); // Green
+    
+    // "of all logs if settled enter how much settled"
+    // Since settled crops don't accrue interest against the final debt (already paid), we just show them
+    if (settledCrops.length > 0) {
+      doc.setFontSize(12);
+      doc.setTextColor(40);
+      doc.text("Settled Crops (Already Paid)", 14, startY - 2);
+      
+      const rows = settledCrops.map((c: any) => [
+        format(new Date(c.date), "dd/MM/yyyy"),
+        c.cropType,
+        `Rs ${c.amount.toFixed(2)}`,
+        `Settled`,
+        `-`,
+        `Rs ${c.amount.toFixed(2)}`
+      ]);
+
+      autoTable(doc, {
+        startY,
+        head: [["Date", "Crop", "Principal", "Status", "Interest", "Total Settled"]],
+        body: rows,
+        theme: "grid",
+        headStyles: { fillColor: [149, 165, 166] }, // Gray
+        margin: { top: 10 }
+      });
+      startY = (doc as any).lastAutoTable.finalY + 15;
+    }
 
     // Grand Total Box at the bottom
     // Check if we need a new page for the summary
@@ -124,7 +157,7 @@ export default function TotalFinalPage() {
     doc.text(`Total Fertilizers: Rs ${totalFertilizers.toFixed(2)}`, 18, startY + 24);
     doc.text(`Total Cash Taken: Rs ${totalTaken.toFixed(2)}`, 18, startY + 30);
     doc.setTextColor(39, 174, 96);
-    doc.text(`Minus Money Given: - Rs ${totalGiven.toFixed(2)}`, 18, startY + 36);
+    doc.text(`Minus Money Given & Unsettled Crops: - Rs ${(totalGiven + totalUnsettledCrops).toFixed(2)}`, 18, startY + 36);
     
     doc.setFontSize(14);
     doc.setTextColor(192, 57, 43);

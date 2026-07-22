@@ -93,7 +93,7 @@ export default function FarmerHistoryPage() {
     farmerData.bills?.forEach((b: any) => tl.push({ ...b, timelineType: 'BILL', dateObj: new Date(b.date) }));
     farmerData.cashTransactions?.forEach((c: any) => tl.push({ ...c, timelineType: 'CASH', dateObj: new Date(c.date) }));
     farmerData.cropLogs?.forEach((c: any) => tl.push({ ...c, timelineType: 'CROP_LOG', dateObj: new Date(c.date) }));
-    farmerData.cropSettlements?.forEach((c: any) => tl.push({ ...c, timelineType: 'CROP_SETTLEMENT', dateObj: new Date(c.date) }));
+    // Crop Settlements are no longer shown as standalone timeline items per user request
     return tl.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
   };
 
@@ -137,10 +137,6 @@ export default function FarmerHistoryPage() {
         details = `${item.cropType}: ${bagsArr.length} bags, ${item.totalWeight}kg @ ₹${item.price || 0}/100kg\nStatus: ${item.isSettled ? 'Settled' : 'Not Settled'}`;
         const total = (item.totalWeight / 100) * (item.price || 0);
         amountStr = `Value ₹${total.toFixed(2)}`;
-      } else if (item.timelineType === "CROP_SETTLEMENT") {
-        type = "Crop Settlement";
-        details = "Payment received for crops";
-        amountStr = `Paid ₹${item.amount.toFixed(2)}`;
       }
 
       tableRows.push([
@@ -319,12 +315,6 @@ export default function FarmerHistoryPage() {
                       const total = (item.totalWeight / 100) * (item.price || 0);
                       amountStr = `Value ₹${total.toFixed(2)}`;
                       amountColor = "text-emerald-700 font-bold";
-                    } else if (item.timelineType === "CROP_SETTLEMENT") {
-                      typeIcon = <HandCoins className="w-4 h-4 text-emerald-600" />;
-                      typeLabel = "Crop Settlement";
-                      details = "Payment received for crops";
-                      amountStr = `Paid ₹${item.amount.toFixed(2)}`;
-                      amountColor = "text-green-700 font-bold";
                     }
 
                     return (

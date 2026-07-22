@@ -161,6 +161,7 @@ export default function CashSectionPage() {
                   min="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  onWheel={(e) => (e.target as HTMLElement).blur()}
                   placeholder="e.g. 5000"
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 text-xl font-medium h-[52px]"
                 />

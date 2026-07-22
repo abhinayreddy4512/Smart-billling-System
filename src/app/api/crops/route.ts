@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { farmerId, cropType, bagWeights, price } = body;
+    const { farmerId, cropType, bagWeights, price, date } = body;
 
     if (!farmerId || !cropType || !Array.isArray(bagWeights) || price === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
         bagWeights,
         totalWeight,
         price: parseFloat(price),
+        ...(date && { date: new Date(date) }),
       },
     });
 

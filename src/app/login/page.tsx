@@ -32,8 +32,10 @@ export default function LoginPage() {
       const data = await res.json();
       
       if (!data.user.shopName) {
+        setLoading(false);
         router.push("/onboarding");
       } else {
+        setLoading(false);
         router.push("/");
       }
     } catch (err: any) {

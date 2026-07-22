@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -80,6 +80,7 @@ model CropLog {
   bagWeights  Json     // array of numbers
   totalWeight Float
   price       Float?   @default(0) // price per kg
+  isSettled   Boolean  @default(false)
   date        DateTime @default(now())
 }
 

@@ -9,9 +9,18 @@ export async function GET(
     const { id } = await params;
 
     const farmer = await prisma.farmer.findUnique({
-      where: { id },
+      where: { id: id.toUpperCase() },
       include: {
         bills: {
+          orderBy: { date: "desc" },
+        },
+        cashTransactions: {
+          orderBy: { date: "desc" },
+        },
+        cropLogs: {
+          orderBy: { date: "desc" },
+        },
+        cropSettlements: {
           orderBy: { date: "desc" },
         },
       },

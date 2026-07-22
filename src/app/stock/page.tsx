@@ -64,8 +64,6 @@ export default function StockUpdatesPage() {
     }
   };
 
-  const fertilizers = products.filter((p) => p.category === "FERTILIZER");
-  const pesticides = products.filter((p) => p.category === "PESTICIDE");
 
   return (
     <div className="max-w-6xl mx-auto h-full flex flex-col pt-8 pb-12">
@@ -130,75 +128,40 @@ export default function StockUpdatesPage() {
             <div className="p-8 text-center text-slate-500">Loading inventory...</div>
           ) : (
             <>
-              {/* Fertilizers */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-200 bg-amber-50/50 flex justify-between items-center">
-                  <h3 className="font-bold text-amber-900 flex items-center gap-2">
-                    <Package className="w-5 h-5 text-amber-600" /> Fertilizers
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-2">
+                <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <PackageSearch className="w-5 h-5 text-slate-600" /> Stock Details (A-Z)
                   </h3>
-                  <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                    {fertilizers.length} items
+                  <span className="bg-slate-200 text-slate-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                    {products.length} total items
                   </span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="bg-slate-50 text-slate-500">
+                      <tr className="bg-slate-100 text-slate-500">
                         <th className="px-4 py-3 font-medium border-b">Product Name</th>
+                        <th className="px-4 py-3 font-medium border-b">Category</th>
                         <th className="px-4 py-3 font-medium border-b">Size</th>
-                        <th className="px-4 py-3 font-medium border-b text-right">Items</th>
+                        <th className="px-4 py-3 font-medium border-b text-right">Items Remaining</th>
                         <th className="px-4 py-3 font-medium border-b text-right">Price</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {fertilizers.length === 0 ? (
-                        <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">No fertilizers in stock</td></tr>
+                      {products.length === 0 ? (
+                        <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">No products in stock</td></tr>
                       ) : (
-                        fertilizers.map(f => (
-                          <tr key={f.id} className="hover:bg-slate-50">
-                            <td className="px-4 py-3 font-medium text-slate-800">{f.name}</td>
-                            <td className="px-4 py-3 text-slate-500">{f.size || "-"}</td>
-                            <td className="px-4 py-3 text-right">
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${f.quantity < 10 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
-                                {f.quantity}
+                        [...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                          <tr key={`all-${p.id}`} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-medium text-slate-800">{p.name}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                p.category === "FERTILIZER" ? "bg-amber-100 text-amber-700" : "bg-teal-100 text-teal-700"
+                              }`}>
+                                {p.category === "FERTILIZER" ? "Fertilizer" : "Pesticide"}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right text-slate-600">₹{f.price.toFixed(2)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Pesticides */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-200 bg-teal-50/50 flex justify-between items-center">
-                  <h3 className="font-bold text-teal-900 flex items-center gap-2">
-                    <Package className="w-5 h-5 text-teal-600" /> Pesticides
-                  </h3>
-                  <span className="bg-teal-100 text-teal-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                    {pesticides.length} items
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-500">
-                        <th className="px-4 py-3 font-medium border-b">Product Name</th>
-                        <th className="px-4 py-3 font-medium border-b">Size</th>
-                        <th className="px-4 py-3 font-medium border-b text-right">Items</th>
-                        <th className="px-4 py-3 font-medium border-b text-right">Price</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {pesticides.length === 0 ? (
-                        <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">No pesticides in stock</td></tr>
-                      ) : (
-                        pesticides.map(p => (
-                          <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="px-4 py-3 font-medium text-slate-800">{p.name}</td>
                             <td className="px-4 py-3 text-slate-500">{p.size || "-"}</td>
                             <td className="px-4 py-3 text-right">
                               <span className={`px-2 py-1 rounded text-xs font-medium ${p.quantity < 10 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>

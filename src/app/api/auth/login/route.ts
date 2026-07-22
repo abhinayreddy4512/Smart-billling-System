@@ -5,7 +5,17 @@ import bcrypt from "bcryptjs";
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json();
+    const body = await request.text();
+    console.log('Login request raw body:', body);
+    let email: string = "", password: string = "";
+    try {
+      const data = JSON.parse(body);
+      email = data.email;
+      password = data.password;
+    } catch (e) {
+      console.error('Failed to parse login JSON:', e);
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 });

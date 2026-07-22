@@ -30,7 +30,7 @@ export async function GET(
     
     // Process Bills (Farmer owes money)
     const processedBills = farmer.bills.map((bill) => {
-      const days = differenceInDays(today, new Date(bill.date));
+      const days = Math.max(0, differenceInDays(today, new Date(bill.date)));
       const months = days / 30;
       const interest = bill.total * INTEREST_RATE_PER_MONTH * months;
       
@@ -42,7 +42,7 @@ export async function GET(
 
     // Process Cash (Taken = owes money, Given = paid money)
     const processedCash = farmer.cashTransactions.map((cash) => {
-      const days = differenceInDays(today, new Date(cash.date));
+      const days = Math.max(0, differenceInDays(today, new Date(cash.date)));
       const months = days / 30;
       let interest = 0;
 
@@ -52,12 +52,13 @@ export async function GET(
         totalInterest += interest;
         return { ...cash, days, interest, finalAmount: cash.amount + interest };
       } else {
-        // GIVEN: subtracts from the debt, usually interest is calculated against the balance,
-        // but for simplicity, we calculate the interest earned on the deposit and subtract it.
+        // GIVEN: subtracts from the debt
+        // We calculate interest and deduct it from the running totals,
+        // but return positive amounts so the frontend can display them nicely.
         interest = cash.amount * INTEREST_RATE_PER_MONTH * months;
         totalPrincipal -= cash.amount;
         totalInterest -= interest;
-        return { ...cash, days, interest: -interest, finalAmount: -(cash.amount + interest) };
+        return { ...cash, days, interest: interest, finalAmount: (cash.amount + interest) };
       }
     });
 

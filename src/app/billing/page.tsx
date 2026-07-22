@@ -39,8 +39,18 @@ export default function BillingPage() {
   const fetchStock = () => {
     fetch("/api/stock")
       .then(res => res.json())
-      .then(data => setProducts(data))
-      .catch(err => console.error("Error fetching stock:", err));
+      .then(data => {
+        if (Array.isArray(data)) {
+          setProducts(data);
+        } else {
+          console.error("Expected array of products, got:", data);
+          setProducts([]);
+        }
+      })
+      .catch(err => {
+        console.error("Error fetching stock:", err);
+        setProducts([]);
+      });
   };
 
   useEffect(() => {

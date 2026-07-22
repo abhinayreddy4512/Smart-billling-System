@@ -86,14 +86,13 @@ export default function TotalFinalPage() {
         format(new Date(i.date), "dd/MM/yyyy"),
         i.product || i.cropType || i.type,
         `Rs ${(i.total || i.amount).toFixed(2)}`,
-        `${i.days} days`,
         `Rs ${i.interest.toFixed(2)}`,
         `Rs ${i.finalAmount.toFixed(2)}`
       ]);
 
       autoTable(doc, {
         startY,
-        head: [["Date", "Item/Type", "Principal", "Duration", "Interest", "Total Amount"]],
+        head: [["Date", "Item/Type", "Principal", "Interest", "Total Amount"]],
         body: rows,
         theme: "striped",
         headStyles: { fillColor: headColor as [number, number, number] },
@@ -139,29 +138,45 @@ export default function TotalFinalPage() {
 
     // Grand Total Box at the bottom
     // Check if we need a new page for the summary
-    if (startY > 230) {
+    if (startY > 210) {
       doc.addPage();
       startY = 20;
     }
 
     doc.setDrawColor(200);
     doc.setFillColor(245, 247, 250);
-    doc.rect(14, startY, 182, 50, "FD");
+    doc.rect(14, startY, 182, 70, "FD"); // Increased height for more lines
     
     doc.setFontSize(14);
     doc.setTextColor(40);
-    doc.text("Final Account Summary", 18, startY + 8);
+    doc.text("Final Calculation Steps", 18, startY + 8);
     
     doc.setFontSize(11);
-    doc.text(`Total Pesticides: Rs ${totalPesticides.toFixed(2)}`, 18, startY + 18);
-    doc.text(`Total Fertilizers: Rs ${totalFertilizers.toFixed(2)}`, 18, startY + 24);
-    doc.text(`Total Cash Taken: Rs ${totalTaken.toFixed(2)}`, 18, startY + 30);
-    doc.setTextColor(39, 174, 96);
-    doc.text(`Minus Money Given & Unsettled Crops: - Rs ${(totalGiven + totalUnsettledCrops).toFixed(2)}`, 18, startY + 36);
     
+    // Step 1: Purchases
+    doc.text(`Total Pesticides: Rs ${totalPesticides.toFixed(2)}`, 18, startY + 18);
+    doc.text(`(+) Total Fertilizers: Rs ${totalFertilizers.toFixed(2)}`, 18, startY + 24);
+    const subtotalPurchases = totalPesticides + totalFertilizers;
+    doc.setFont(undefined, 'bold');
+    doc.text(`(=) Subtotal (Purchases): Rs ${subtotalPurchases.toFixed(2)}`, 18, startY + 30);
+    doc.setFont(undefined, 'normal');
+
+    // Step 2: Cash Taken
+    doc.text(`(+) Total Cash Taken: Rs ${totalTaken.toFixed(2)}`, 18, startY + 38);
+    const totalDebt = subtotalPurchases + totalTaken;
+    doc.setFont(undefined, 'bold');
+    doc.text(`(=) Total Debt Accumulated: Rs ${totalDebt.toFixed(2)}`, 18, startY + 44);
+    doc.setFont(undefined, 'normal');
+
+    // Step 3: Repayments
+    doc.setTextColor(39, 174, 96); // Green for deductions
+    doc.text(`(-) Minus (Money Given + Unsettled Crops): Rs ${(totalGiven + totalUnsettledCrops).toFixed(2)}`, 18, startY + 52);
+    
+    // Final Line
     doc.setFontSize(14);
-    doc.setTextColor(192, 57, 43);
-    doc.text(`Final Outstanding Balance: Rs ${grandTotal.toFixed(2)}`, 90, startY + 28);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(192, 57, 43); // Red for final balance
+    doc.text(`Final Outstanding Balance: Rs ${grandTotal.toFixed(2)}`, 85, startY + 63);
 
     const pdfBlobUrl = doc.output("bloburl");
     window.open(pdfBlobUrl, "_blank");

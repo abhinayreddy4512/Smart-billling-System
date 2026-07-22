@@ -31,7 +31,8 @@ export async function login(user: any) {
   };
   const session = await encrypt(sessionData);
   
-  cookies().set("session", session, {
+  const cookieStore = await cookies();
+  cookieStore.set("session", session, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     maxAge: 7 * 24 * 60 * 60, // 7 days
@@ -40,7 +41,8 @@ export async function login(user: any) {
 }
 
 export async function logout() {
-  cookies().set("session", "", {
+  const cookieStore = await cookies();
+  cookieStore.set("session", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     expires: new Date(0),
@@ -52,7 +54,7 @@ export async function getSession(req?: any) {
   // Use the request's cookies in middleware, otherwise fall back to Next.js cookies helper
   const cookieStore = req && typeof req.cookies?.get === "function"
     ? req.cookies
-    : cookies();
+    : await cookies();
   const session = cookieStore.get("session")?.value;
   if (!session) return null;
   try {

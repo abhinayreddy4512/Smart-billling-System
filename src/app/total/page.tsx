@@ -157,16 +157,16 @@ export default function TotalFinalPage() {
     doc.text(`Total Pesticides: Rs ${totalPesticides.toFixed(2)}`, 18, startY + 18);
     doc.text(`(+) Total Fertilizers: Rs ${totalFertilizers.toFixed(2)}`, 18, startY + 24);
     const subtotalPurchases = totalPesticides + totalFertilizers;
-    doc.setFont(undefined, 'bold');
+    doc.setFont("helvetica", "bold");
     doc.text(`(=) Subtotal (Purchases): Rs ${subtotalPurchases.toFixed(2)}`, 18, startY + 30);
-    doc.setFont(undefined, 'normal');
+    doc.setFont("helvetica", "normal");
 
     // Step 2: Cash Taken
     doc.text(`(+) Total Cash Taken: Rs ${totalTaken.toFixed(2)}`, 18, startY + 38);
     const totalDebt = subtotalPurchases + totalTaken;
-    doc.setFont(undefined, 'bold');
+    doc.setFont("helvetica", "bold");
     doc.text(`(=) Total Debt Accumulated: Rs ${totalDebt.toFixed(2)}`, 18, startY + 44);
-    doc.setFont(undefined, 'normal');
+    doc.setFont("helvetica", "normal");
 
     // Step 3: Repayments
     doc.setTextColor(39, 174, 96); // Green for deductions
@@ -174,7 +174,7 @@ export default function TotalFinalPage() {
     
     // Final Line
     doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
+    doc.setFont("helvetica", "bold");
     doc.setTextColor(192, 57, 43); // Red for final balance
     doc.text(`Final Outstanding Balance: Rs ${grandTotal.toFixed(2)}`, 85, startY + 63);
 

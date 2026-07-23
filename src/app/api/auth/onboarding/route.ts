@@ -55,8 +55,7 @@ export async function POST(request: Request) {
     const token = await encrypt(updatedSession);
     const response = NextResponse.json({ success: true });
     
-    const cookieStore = await cookies();
-    cookieStore.set("session", token, {
+    response.cookies.set("session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

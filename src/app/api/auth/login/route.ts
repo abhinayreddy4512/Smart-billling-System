@@ -51,8 +51,7 @@ export async function POST(request: Request) {
       user: { id: user.id, email: user.email, shopName: user.shopName },
     });
     
-    const cookieStore = await cookies();
-    cookieStore.set("session", token, {
+    response.cookies.set("session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 7 * 24 * 60 * 60,
@@ -62,6 +61,6 @@ export async function POST(request: Request) {
     return response;
   } catch (error: any) {
     console.error("Login error:", error);
-    return NextResponse.json({ error: "Internal server error: " + error?.message + " | " + error?.stack }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error: " + error?.message }, { status: 500 });
   }
 }

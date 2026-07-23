@@ -1,15 +1,25 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
+import { getSession } from "@/lib/auth";
 
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { farmerId, photoProof, items } = body;
 
     if (!farmerId || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Missing required fields or items" }, { status: 400 });
+    }
+
+    const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+    if (!farmer || farmer.userId !== session.user.id) {
+      return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
     // Use a transaction to ensure all bills and stock deductions succeed
@@ -27,7 +37,7 @@ export async function POST(request: Request) {
 
         // 1. Fetch Product
         const product = await tx.product.findUnique({ where: { id: productId } });
-        if (!product) throw new Error(`Product not found (ID: ${productId})`);
+        if (!product || product.userId !== session.user.id) throw new Error(`Product not found (ID: ${productId})`);
         
         if (product.quantity < qty) {
           throw new Error(`Insufficient stock for ${product.name}. Only ${product.quantity} left.`);
@@ -44,7 +54,7 @@ export async function POST(request: Request) {
         
         const bill = await tx.bill.create({
           data: {
-            farmerId: farmerId.toUpperCase(),
+            farmerId: farmerId,
             category: product.category,
             product: productNameWithSize,
             quantity: qty,

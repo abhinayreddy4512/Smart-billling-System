@@ -14,10 +14,18 @@ export async function GET(
     const today = new Date();
     
     const session = await getSession();
-    const shopInfo = session?.user || null;
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const shopInfo = session.user;
 
     const farmer = await prisma.farmer.findUnique({
-      where: { id: id.toUpperCase() },
+      where: { 
+        userId_farmerNo: {
+          userId: session.user.id,
+          farmerNo: id.toUpperCase()
+        }
+      },
       include: {
         bills: { orderBy: { date: "asc" } },
         cashTransactions: { orderBy: { date: "asc" } },

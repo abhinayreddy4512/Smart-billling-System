@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
+import { getSession } from "@/lib/auth";
 
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { farmerId, cropType, bagWeights, price, date } = body;
 
@@ -12,9 +17,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Verify farmer exists
-    const farmer = await prisma.farmer.findUnique({ where: { id: farmerId.toUpperCase() } });
-    if (!farmer) {
+    // Verify farmer exists and belongs to current user
+    const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+    if (!farmer || farmer.userId !== session.user.id) {
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 

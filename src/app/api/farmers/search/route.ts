@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
@@ -10,11 +11,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Query parameter 'q' is required" }, { status: 400 });
     }
 
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const farmers = await prisma.farmer.findMany({
       where: {
+        userId: session.user.id,
         OR: [
-          { id: { contains: query } },
-          { name: { contains: query } },
+          { farmerNo: { contains: query } },
+          { name: { contains: query, mode: 'insensitive' } },
           { phone: { contains: query } },
         ],
       },

@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
+import { getSession } from "@/lib/auth";
 
 
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const products = await prisma.product.findMany({
+      where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(products);
@@ -17,6 +23,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { category, name, size, quantity, price } = body;
 
@@ -26,6 +37,7 @@ export async function POST(request: Request) {
 
     const product = await prisma.product.create({
       data: {
+        userId: session.user.id,
         category,
         name,
         size: size || null,

@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
+import { getSession } from "@/lib/auth";
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { farmerId, cropLogIds, date } = await request.json();
 
     if (!farmerId || !cropLogIds || cropLogIds.length === 0 || !date) {
       return NextResponse.json({ error: "Missing required fields or no bills selected" }, { status: 400 });
+    }
+
+    const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+    if (!farmer || farmer.userId !== session.user.id) {
+      return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
     // Find the logs to calculate the exact amount

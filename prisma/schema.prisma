@@ -22,16 +22,23 @@ model User {
   state     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  farmers   Farmer[]
+  products  Product[]
 }
 
 model Farmer {
-  id               String            @id // e.g. 1001
+  id               String            @id @default(cuid())
+  farmerNo         String            // e.g. "1001"
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   name             String
   phone            String
   email            String?
   photoUrl         String?           @db.Text
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
+  
+  @@unique([userId, farmerNo])
   bills            Bill[]
   cashTransactions CashTransaction[]
   cropLogs         CropLog[]
@@ -40,6 +47,8 @@ model Farmer {
 
 model Product {
   id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   category  String   // 'FERTILIZER' or 'PESTICIDE'
   name      String
   size      String?  // '50kg', '1 Litre', etc.

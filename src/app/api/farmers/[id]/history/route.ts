@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -9,8 +10,18 @@ export async function GET(
   try {
     const { id } = await params;
 
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const farmer = await prisma.farmer.findUnique({
-      where: { id: id.toUpperCase() },
+      where: { 
+        userId_farmerNo: {
+          userId: session.user.id,
+          farmerNo: id.toUpperCase()
+        }
+      },
       include: {
         bills: {
           orderBy: { date: "desc" },

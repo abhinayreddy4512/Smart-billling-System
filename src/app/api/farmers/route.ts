@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
+import { getSession } from "@/lib/auth";
 
 
 export async function GET() {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const farmers = await prisma.farmer.findMany({
+      where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(farmers);
@@ -17,6 +23,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session || !session.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { name, phone, email } = body;
 
@@ -24,24 +35,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name and Phone are required" }, { status: 400 });
     }
 
-    // Generate unique ID: F-001, F-002, etc.
-    // In a highly concurrent environment, a transaction or sequence is better,
-    // but this is a simple local app.
     const lastFarmer = await prisma.farmer.findFirst({
+      where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
     });
 
-    let newId = "1001";
-    if (lastFarmer && lastFarmer.id.match(/^\d+$/)) {
-      const lastNumber = parseInt(lastFarmer.id, 10);
+    let newFarmerNo = "1001";
+    if (lastFarmer && lastFarmer.farmerNo.match(/^\d+$/)) {
+      const lastNumber = parseInt(lastFarmer.farmerNo, 10);
       if (!isNaN(lastNumber)) {
-        newId = String(lastNumber + 1);
+        newFarmerNo = String(lastNumber + 1);
       }
     }
 
     const farmer = await prisma.farmer.create({
       data: {
-        id: newId,
+        farmerNo: newFarmerNo,
+        userId: session.user.id,
         name,
         phone,
         email,

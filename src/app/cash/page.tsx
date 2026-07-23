@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Banknote, Camera, Check, X, Search, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import Webcam from "react-webcam";
+import { AlertModal } from "@/components/ui/AlertModal";
 
 export default function CashSectionPage() {
   const [farmerId, setFarmerId] = useState("");
@@ -16,13 +17,17 @@ export default function CashSectionPage() {
   const webcamRef = useRef<Webcam>(null);
   
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  
+  // Alert Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
 
   const handleSearchFarmer = async () => {
     if (!farmerId) return;
     setFarmerInfo(null);
-    setError("");
+    
     
     try {
       const res = await fetch(`/api/farmers/${farmerId.toUpperCase()}/history`);
@@ -30,7 +35,10 @@ export default function CashSectionPage() {
       const data = await res.json();
       setFarmerInfo(data);
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Search Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     }
   };
 
@@ -45,13 +53,14 @@ export default function CashSectionPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!farmerInfo || !amount || !photo) {
-      setError("Please complete all fields and capture a photo for proof.");
+      setModalType("error");
+      setModalTitle("Missing Information");
+      setModalMessage("Please complete all fields and capture a photo for proof.");
+      setModalOpen(true);
       return;
     }
     
     setLoading(true);
-    setError("");
-    setSuccess("");
 
     try {
       const res = await fetch("/api/cash", {
@@ -70,14 +79,22 @@ export default function CashSectionPage() {
         throw new Error(err.error || "Transaction failed");
       }
 
-      setSuccess(`Cash ${transactionType.toLowerCase()} transaction recorded successfully!`);
+      const data = await res.json();
+      
+      setModalType("success");
+      setModalTitle("Entry Successful");
+      setModalMessage(`Cash ${transactionType.toLowerCase()} transaction recorded successfully!\nReceipt ID: ${data.receiptNo || "-"}`);
+      setModalOpen(true);
       
       // Reset form partially
       setAmount("");
       setPhoto(null);
         
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Entry Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     } finally {
       setLoading(false);
     }
@@ -95,9 +112,15 @@ export default function CashSectionPage() {
         </div>
       </div>
 
+      <AlertModal
+        isOpen={modalOpen}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setModalOpen(false)}
+      />
+
       <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-        {error && <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg">{error}</div>}
-        {success && <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-lg font-medium">{success}</div>}
 
         <div className="space-y-8">
           {/* STEP 1: Farmer Selection */}

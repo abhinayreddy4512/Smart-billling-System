@@ -3,6 +3,7 @@
 import React, { useState, useRef } from "react";
 import { Sprout, Search, Save, CheckCircle2, Plus, X, List, HandCoins } from "lucide-react";
 import SettlementSection from "./SettlementSection";
+import { AlertModal } from "@/components/ui/AlertModal";
 
 export default function CropsLoggingPage() {
   const [activeTab, setActiveTab] = useState<"ENTRY" | "SETTLEMENT">("ENTRY");
@@ -24,13 +25,19 @@ export default function CropsLoggingPage() {
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   
+  // Alert Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
+  
   const inputRef = useRef<HTMLInputElement>(null);
 
   // For searching farmer
   const handleSearchFarmer = async () => {
     if (!farmerId) return;
     setFarmerInfo(null);
-    setError("");
+    
     setBagWeights([]); 
     
     try {
@@ -39,7 +46,10 @@ export default function CropsLoggingPage() {
       const data = await res.json();
       setFarmerInfo(data);
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Search Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     }
   };
 
@@ -61,11 +71,23 @@ export default function CropsLoggingPage() {
       });
 
       if (!res.ok) throw new Error("Failed to save entry");
+      
+      const newLog = await res.json();
+      setModalType("success");
+      setModalTitle("Entry Successful");
+      setModalMessage(`Crop log saved successfully!\nLog ID: ${newLog.logNo || "-"}`);
+      setModalOpen(true);
+      
       setSaveStatus("Saved successfully!");
       setBagWeights([]); // Reset form after saving
       setCropPrice("");
       setTimeout(() => setSaveStatus(""), 3000);
     } catch (err: any) {
+      setModalType("error");
+      setModalTitle("Entry Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
+      
       setSaveStatus("Error saving!");
       console.error(err);
     }
@@ -142,7 +164,13 @@ export default function CropsLoggingPage() {
 
       {activeTab === "ENTRY" && (
         <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-          {error && <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg">{error}</div>}
+          <AlertModal
+            isOpen={modalOpen}
+            type={modalType}
+            title={modalTitle}
+            message={modalMessage}
+            onClose={() => setModalOpen(false)}
+          />
 
           <div className="space-y-8">
             {/* STEP 1: Farmer Selection */}

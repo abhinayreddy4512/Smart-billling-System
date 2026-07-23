@@ -32,11 +32,11 @@ export default function LoginPage() {
       const data = await res.json();
       
       if (!data.user.shopName) {
-        router.refresh();
+        
         router.push("/onboarding");
       } else {
-        router.refresh();
-        router.push("/");
+        
+        window.location.href = "/";
       }
     } catch (err: any) {
       setError(err.message);

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { CheckCircle2, Save, FileText, IndianRupee } from "lucide-react";
 import { format } from "date-fns";
+import { AlertModal } from "@/components/ui/AlertModal";
 
 interface SettlementProps {
   farmerId: string;
@@ -12,7 +13,12 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
   const [settlements, setSettlements] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [saveStatus, setSaveStatus] = useState("");
+  
+  // Alert Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
   
   // State for selecting bills to settle
   const [selectedLogs, setSelectedLogs] = useState<string[]>([]);
@@ -34,7 +40,7 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
   React.useEffect(() => {
     setCropLogs([]);
     setSettlements([]);
-    setError("");
+    
     setSelectedLogs([]);
     fetchHistory();
   }, [farmerId]);
@@ -61,7 +67,7 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
   const handleSave = async () => {
     if (selectedLogs.length === 0) return;
     setLoading(true);
-    setError("");
+    
     try {
       const res = await fetch(`/api/settlement`, {
         method: "POST",
@@ -69,12 +75,19 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
         body: JSON.stringify({ farmerId, cropLogIds: selectedLogs, date }),
       });
       if (!res.ok) throw new Error("Failed to record settlement");
-      setSaveStatus("Settlement recorded successfully!");
+      
+      setModalType("success");
+      setModalTitle("Entry Successful");
+      setModalMessage("Settlement recorded successfully!");
+      setModalOpen(true);
+      
       setSelectedLogs([]);
-      setTimeout(() => setSaveStatus(""), 2000);
       fetchHistory();
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Entry Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     } finally {
       setLoading(false);
     }
@@ -87,15 +100,17 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
 
   return (
     <div className="mt-8 bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
+      <AlertModal
+        isOpen={modalOpen}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setModalOpen(false)}
+      />
+      
       <div className="flex justify-between items-center border-b border-slate-200 pb-4">
         <h3 className="text-lg font-bold text-slate-800">Cotton & Mirchi Settlement</h3>
       </div>
-      
-      {error && (
-        <div className="p-3 bg-red-50 text-red-600 rounded-lg border border-red-100">
-          {error}
-        </div>
-      )}
 
       {/* Crop Sales History (Logs) */}
       <div>
@@ -187,12 +202,6 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
             <Save className="w-5 h-5" /> Settle Bills
           </button>
         </div>
-        
-        {saveStatus && (
-          <div className="text-sm text-emerald-600 mt-4 flex items-center gap-1 font-medium bg-emerald-50 p-3 rounded-lg">
-            <CheckCircle2 className="w-5 h-5" /> {saveStatus}
-          </div>
-        )}
       </div>
 
       {/* Settlement History */}

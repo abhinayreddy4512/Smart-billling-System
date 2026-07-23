@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Receipt, Camera, Check, X, Search, ShoppingCart, Plus, Trash2 } from "lucide-react";
 import Webcam from "react-webcam";
+import { AlertModal } from "@/components/ui/AlertModal";
 
 type CartItem = {
   productId: string;
@@ -33,8 +34,12 @@ export default function BillingPage() {
   const webcamRef = useRef<Webcam>(null);
   
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  
+  // Alert Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
 
   const fetchStock = () => {
     fetch("/api/stock")
@@ -60,7 +65,7 @@ export default function BillingPage() {
   const handleSearchFarmer = async () => {
     if (!farmerId) return;
     setFarmerInfo(null);
-    setError("");
+    
     
     try {
       const res = await fetch(`/api/farmers/${farmerId.toUpperCase()}/history`);
@@ -68,7 +73,10 @@ export default function BillingPage() {
       const data = await res.json();
       setFarmerInfo(data);
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Search Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     }
   };
 
@@ -88,16 +96,20 @@ export default function BillingPage() {
     const prc = parseFloat(price);
 
     if (isNaN(qty) || qty <= 0) {
-      setError("Please enter a valid quantity.");
+      setModalType("error");
+      setModalTitle("Invalid Quantity");
+      setModalMessage("Please enter a valid quantity.");
+      setModalOpen(true);
       return;
     }
     
     if (qty > prod.quantity) {
-      setError(`Only ${prod.quantity} items left in stock for ${prod.name}.`);
+      setModalType("error");
+      setModalTitle("Insufficient Stock");
+      setModalMessage(`Only ${prod.quantity} items left in stock for ${prod.name}.`);
+      setModalOpen(true);
       return;
     }
-    
-    setError("");
 
     const newItem: CartItem = {
       productId: prod.id,
@@ -134,13 +146,14 @@ export default function BillingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!farmerInfo || cart.length === 0 || !photo) {
-      setError("Please select a farmer, add items to cart, and capture a photo proof.");
+      setModalType("error");
+      setModalTitle("Missing Information");
+      setModalMessage("Please select a farmer, add items to cart, and capture a photo proof.");
+      setModalOpen(true);
       return;
     }
     
     setLoading(true);
-    setError("");
-    setSuccess("");
 
     try {
       const res = await fetch("/api/billing", {
@@ -162,7 +175,12 @@ export default function BillingPage() {
         throw new Error(err.error || "Billing failed");
       }
 
-      setSuccess("Bill generated successfully for all items!");
+      const data = await res.json();
+
+      setModalType("success");
+      setModalTitle("Entry Successful");
+      setModalMessage(`Bill generated successfully for all items!\nBill ID: ${data[0]?.billNo || "-"}`);
+      setModalOpen(true);
       
       // Reset form
       setCart([]);
@@ -170,7 +188,10 @@ export default function BillingPage() {
       fetchStock();
         
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Entry Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     } finally {
       setLoading(false);
     }
@@ -191,9 +212,15 @@ export default function BillingPage() {
         </div>
       </div>
 
+      <AlertModal
+        isOpen={modalOpen}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setModalOpen(false)}
+      />
+
       <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-        {error && <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg">{error}</div>}
-        {success && <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-lg font-medium">{success}</div>}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           

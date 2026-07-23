@@ -2,13 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { PackageSearch, Plus, Package } from "lucide-react";
+import { AlertModal } from "@/components/ui/AlertModal";
 
 export default function StockUpdatesPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  
+  // Alert Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
 
   const fetchProducts = async () => {
     try {
@@ -17,7 +22,7 @@ export default function StockUpdatesPage() {
       const data = await res.json();
       setProducts(data);
     } catch (err: any) {
-      setError(err.message);
+      // Background fail
     } finally {
       setLoading(false);
     }
@@ -30,8 +35,6 @@ export default function StockUpdatesPage() {
   const handleAddStock = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setAdding(true);
-    setError("");
-    setSuccess("");
 
     const formData = new FormData(e.currentTarget);
     const data = {
@@ -54,11 +57,18 @@ export default function StockUpdatesPage() {
         throw new Error(errData.error || "Failed to add stock");
       }
 
-      setSuccess("Product added successfully!");
+      setModalType("success");
+      setModalTitle("Entry Successful");
+      setModalMessage("Product added to inventory successfully.");
+      setModalOpen(true);
+      
       (e.target as HTMLFormElement).reset();
       fetchProducts(); // Refresh list
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Entry Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     } finally {
       setAdding(false);
     }
@@ -77,15 +87,20 @@ export default function StockUpdatesPage() {
         </div>
       </div>
 
+      <AlertModal
+        isOpen={modalOpen}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setModalOpen(false)}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Add New Stock Form */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-1">
           <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
             <Plus className="w-5 h-5 text-slate-500" /> Add New Item
           </h2>
-          
-          {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
-          {success && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm">{success}</div>}
 
           <form onSubmit={handleAddStock} className="space-y-4">
             <div className="space-y-2">

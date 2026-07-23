@@ -3,18 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Save } from "lucide-react";
+import { AlertModal } from "@/components/ui/AlertModal";
 
 export default function AddFarmerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  
+  // Alert Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    setError("");
-    setSuccess("");
 
     const formData = new FormData(e.currentTarget);
     const data = {
@@ -36,13 +39,18 @@ export default function AddFarmerPage() {
       }
 
       const newFarmer = await res.json();
-      setSuccess(`Farmer added successfully! Generated ID: ${newFarmer.farmerNo}`);
-      (e.target as HTMLFormElement).reset();
       
-      // Optional: redirect to history after a short delay
-      // setTimeout(() => router.push("/farmers/history"), 2000);
+      setModalType("success");
+      setModalTitle("Entry Successful");
+      setModalMessage(`Farmer added successfully!\nGenerated ID: ${newFarmer.farmerNo}`);
+      setModalOpen(true);
+      
+      (e.target as HTMLFormElement).reset();
     } catch (err: any) {
-      setError(err.message);
+      setModalType("error");
+      setModalTitle("Entry Unsuccessful");
+      setModalMessage(err.message);
+      setModalOpen(true);
     } finally {
       setLoading(false);
     }
@@ -60,17 +68,15 @@ export default function AddFarmerPage() {
         </div>
       </div>
 
+      <AlertModal
+        isOpen={modalOpen}
+        type={modalType}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={() => setModalOpen(false)}
+      />
+
       <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-lg border border-green-200 font-medium">
-            {success}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">

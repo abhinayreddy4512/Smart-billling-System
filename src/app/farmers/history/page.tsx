@@ -33,7 +33,7 @@ export default function FarmerHistoryPage() {
         setSearchResults([]);
         setShowDropdown(false);
       }
-    }, 300);
+    }, 100);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);

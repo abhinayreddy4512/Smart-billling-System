@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
 import { getSession } from "@/lib/auth";
+import { AppWrapper } from "@/components/layout/AppWrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,10 +32,9 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-row bg-slate-50 text-green-950">
-        {session && <Sidebar shopName={session.user?.shopName} />}
-        <main className={`flex-1 overflow-y-auto h-screen ${session ? "p-8" : ""}`}>
+        <AppWrapper shopName={session?.user?.shopName}>
           {children}
-        </main>
+        </AppWrapper>
       </body>
     </html>
   );

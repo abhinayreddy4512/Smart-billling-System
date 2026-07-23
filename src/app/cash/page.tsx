@@ -156,12 +156,14 @@ export default function CashSectionPage() {
               <div className="space-y-2">
                 <label className="text-sm text-slate-600">Amount (₹)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="1"
+                  type="text"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  onWheel={(e) => (e.target as HTMLElement).blur()}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                      setAmount(val);
+                    }
+                  }}
                   placeholder="e.g. 5000"
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 text-xl font-medium h-[52px]"
                 />

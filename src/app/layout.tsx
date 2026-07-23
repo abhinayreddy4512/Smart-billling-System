@@ -25,17 +25,15 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getSession();
-  const shopName = session?.user?.shopName || "SMART BILLING";
-  const isLoggedIn = !!session;
-
+  
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-row bg-slate-50 text-green-950">
-        {isLoggedIn && <Sidebar shopName={shopName} />}
-        <main className={`flex-1 overflow-y-auto ${isLoggedIn ? 'p-8' : ''} h-screen`}>
+        <Sidebar shopName={session?.user?.shopName} />
+        <main className="flex-1 overflow-y-auto p-8 h-screen">
           {children}
         </main>
       </body>

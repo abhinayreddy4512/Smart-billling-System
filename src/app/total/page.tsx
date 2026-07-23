@@ -46,13 +46,6 @@ export default function TotalFinalPage() {
       doc.setTextColor(41, 128, 185);
       doc.setFont("helvetica", "bold");
       doc.text(shopInfo.shopName.toUpperCase(), 14, 20);
-      
-      doc.setFontSize(11);
-      doc.setTextColor(100);
-      doc.setFont("helvetica", "normal");
-      if (shopInfo.ownerName) {
-        doc.text(`Proprietor: ${shopInfo.ownerName}`, 14, 28);
-      }
     }
 
     doc.setFontSize(18);

@@ -75,7 +75,7 @@ export default function FarmerHistoryPage() {
     
     // If they press enter and there's a result, pick the first one, or try fetching exactly
     if (searchResults.length > 0) {
-      fetchFarmerHistory(searchResults[0].id);
+      fetchFarmerHistory(searchResults[0].farmerNo);
       setSearchQuery(searchResults[0].name);
     } else {
       fetchFarmerHistory(searchQuery.toUpperCase());
@@ -84,7 +84,7 @@ export default function FarmerHistoryPage() {
 
   const handleSelectFarmer = (farmer: any) => {
     setSearchQuery(farmer.name);
-    fetchFarmerHistory(farmer.id);
+    fetchFarmerHistory(farmer.farmerNo);
   };
 
   const getTimeline = () => {
@@ -108,7 +108,7 @@ export default function FarmerHistoryPage() {
 
     // Farmer Info
     doc.setFontSize(12);
-    doc.text(`Farmer ID: ${farmerData.id}`, 14, 32);
+    doc.text(`Farmer ID: ${farmerData.farmerNo}`, 14, 32);
     doc.text(`Name: ${farmerData.name}`, 14, 38);
     doc.text(`Phone: ${farmerData.phone}`, 14, 44);
 
@@ -141,7 +141,7 @@ export default function FarmerHistoryPage() {
 
       tableRows.push([
         format(item.dateObj, "dd/MM/yyyy"),
-        `#${item.id.slice(-6).toUpperCase()}`,
+        item.billNo || item.receiptNo || item.logNo || "-",
         type,
         details,
         amountStr
@@ -154,6 +154,10 @@ export default function FarmerHistoryPage() {
       body: tableRows,
       theme: "grid",
       headStyles: { fillColor: [41, 128, 185] },
+      styles: { overflow: 'linebreak', cellWidth: 'wrap' },
+      columnStyles: {
+        3: { cellWidth: 70 }, // Details column width fixed so it wraps text nicely
+      }
     });
 
     const pdfBlobUrl = doc.output("bloburl");
@@ -252,7 +256,7 @@ export default function FarmerHistoryPage() {
             <div>
               <h2 className="text-xl font-bold text-slate-800">{farmerData.name}</h2>
               <p className="text-slate-500 text-sm mt-1 flex items-center gap-4">
-                <span>ID: <strong className="text-slate-700">{farmerData.id}</strong></span>
+                <span>ID: <strong className="text-slate-700">{farmerData.farmerNo}</strong></span>
                 <span>Phone: <strong className="text-slate-700">{farmerData.phone}</strong></span>
               </p>
             </div>
@@ -323,7 +327,7 @@ export default function FarmerHistoryPage() {
                           {format(item.dateObj, "dd/MM/yyyy HH:mm")}
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-slate-500">
-                          #{item.id.slice(-6).toUpperCase()}
+                          #{item.billNo || item.receiptNo || item.logNo || "-"}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2 font-medium text-slate-700">

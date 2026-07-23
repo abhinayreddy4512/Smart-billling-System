@@ -32,8 +32,8 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-row bg-slate-50 text-green-950">
-        <Sidebar shopName={session?.user?.shopName} />
-        <main className="flex-1 overflow-y-auto p-8 h-screen">
+        {session && <Sidebar shopName={session.user?.shopName} />}
+        <main className={`flex-1 overflow-y-auto h-screen ${session ? "p-8" : ""}`}>
           {children}
         </main>
       </body>

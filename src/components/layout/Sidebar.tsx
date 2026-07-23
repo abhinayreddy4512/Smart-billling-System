@@ -30,6 +30,7 @@ export function Sidebar({ shopName }: { shopName?: string | null }) {
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    router.refresh();
     router.push("/login");
   };
 

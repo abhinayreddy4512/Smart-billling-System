@@ -5,6 +5,8 @@ import { getSession } from "@/lib/auth";
 
 const INTEREST_RATE_PER_MONTH = 0.02; // 2% per month (2 rupees per 100)
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

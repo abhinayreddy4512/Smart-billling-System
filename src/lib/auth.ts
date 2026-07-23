@@ -9,7 +9,7 @@ export async function encrypt(payload: any) {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime("24h") // Expire token after 24 hours just as a fallback
     .sign(key);
 }
 
@@ -35,7 +35,8 @@ export async function login(user: any) {
   cookieStore.set("session", session, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    maxAge: 7 * 24 * 60 * 60, // 7 days
+    // No maxAge or expires means this becomes a "Session Cookie"
+    // which automatically deletes itself when the browser is closed.
     path: "/",
   });
 }

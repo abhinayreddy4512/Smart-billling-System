@@ -36,7 +36,7 @@ export default function AddFarmerPage() {
       }
 
       const newFarmer = await res.json();
-      setSuccess(`Farmer added successfully! Generated ID: ${newFarmer.id}`);
+      setSuccess(`Farmer added successfully! Generated ID: ${newFarmer.farmerNo}`);
       (e.target as HTMLFormElement).reset();
       
       // Optional: redirect to history after a short delay

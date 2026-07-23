@@ -67,7 +67,7 @@ export default function TotalFinalPage() {
     doc.text("Farmer Details:", 14, initialY);
     doc.setFont("helvetica", "normal");
     doc.text(`Name: ${farmer.name}`, 14, initialY + 6);
-    doc.text(`ID: ${farmer.id}`, 14, initialY + 12);
+    doc.text(`ID: ${farmer.farmerNo}`, 14, initialY + 12);
     doc.text(`Phone: ${farmer.phone}`, 14, initialY + 18);
 
     // Filter categories
@@ -97,6 +97,7 @@ export default function TotalFinalPage() {
       doc.text(title, 14, startY - 2);
       
       const rows = items.map((i: any) => [
+        i.billNo || i.receiptNo || i.logNo || "-",
         format(new Date(i.date), "dd/MM/yyyy"),
         i.product || i.cropType || i.type,
         `Rs ${(i.total || i.amount).toFixed(2)}`,
@@ -106,7 +107,7 @@ export default function TotalFinalPage() {
 
       autoTable(doc, {
         startY,
-        head: [["Date", "Item/Type", "Principal", "Interest", "Total Amount"]],
+        head: [["ID", "Date", "Item/Type", "Principal", "Interest", "Total Amount"]],
         body: rows,
         theme: "striped",
         headStyles: { fillColor: headColor as [number, number, number] },
@@ -131,6 +132,7 @@ export default function TotalFinalPage() {
       doc.text("Settled Crops (Already Paid)", 14, startY - 2);
       
       const rows = settledCrops.map((c: any) => [
+        c.logNo || "-",
         format(new Date(c.date), "dd/MM/yyyy"),
         c.cropType,
         `Rs ${c.amount.toFixed(2)}`,
@@ -141,7 +143,7 @@ export default function TotalFinalPage() {
 
       autoTable(doc, {
         startY,
-        head: [["Date", "Crop", "Principal", "Status", "Interest", "Total Settled"]],
+        head: [["ID", "Date", "Crop", "Principal", "Status", "Interest", "Total Settled"]],
         body: rows,
         theme: "grid",
         headStyles: { fillColor: [149, 165, 166] }, // Gray
@@ -254,7 +256,7 @@ export default function TotalFinalPage() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold text-slate-800">{data.farmer.name}</h2>
-              <p className="text-slate-500 text-sm">ID: {data.farmer.id} | Phone: {data.farmer.phone}</p>
+              <p className="text-slate-500 text-sm">ID: {data.farmer.farmerNo} | Phone: {data.farmer.phone}</p>
             </div>
             <button
               onClick={handleExportPDF}

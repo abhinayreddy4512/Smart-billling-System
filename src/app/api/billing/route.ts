@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
-
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -21,6 +20,13 @@ export async function POST(request: Request) {
     if (!farmer || farmer.userId !== session.user.id) {
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
+
+    // Get the next billNo for this user's farmers
+    const lastBill = await prisma.bill.findFirst({
+      where: { farmer: { userId: session.user.id } },
+      orderBy: { billNo: "desc" },
+    });
+    const nextBillNo = lastBill?.billNo ? lastBill.billNo + 1 : 1;
 
     // Use a transaction to ensure all bills and stock deductions succeed
     const result = await prisma.$transaction(async (tx) => {
@@ -54,6 +60,7 @@ export async function POST(request: Request) {
         
         const bill = await tx.bill.create({
           data: {
+            billNo: nextBillNo,
             farmerId: farmerId,
             category: product.category,
             product: productNameWithSize,

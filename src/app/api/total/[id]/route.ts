@@ -103,7 +103,7 @@ export async function GET(
         finalAmount
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error calculating total:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

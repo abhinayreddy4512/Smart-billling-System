@@ -221,7 +221,7 @@ export default function FarmerHistoryPage() {
                         </div>
                         <div>
                           <p className="font-medium text-slate-800">{farmer.name}</p>
-                          <p className="text-xs text-slate-500">ID: {farmer.id} | Phone: {farmer.phone}</p>
+                          <p className="text-xs text-slate-500">ID: {farmer.farmerNo} | Phone: {farmer.phone}</p>
                         </div>
                       </div>
                     </li>

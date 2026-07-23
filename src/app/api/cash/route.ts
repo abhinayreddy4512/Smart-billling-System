@@ -28,8 +28,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
+    const lastTransaction = await prisma.cashTransaction.findFirst({
+      where: { farmer: { userId: session.user.id } },
+      orderBy: { receiptNo: "desc" },
+    });
+    const nextReceiptNo = lastTransaction?.receiptNo ? lastTransaction.receiptNo + 1 : 1;
+
     const transaction = await prisma.cashTransaction.create({
       data: {
+        receiptNo: nextReceiptNo,
         farmerId: farmer.id,
         type: type, // 'TAKEN' or 'GIVEN'
         amount: numericAmount,

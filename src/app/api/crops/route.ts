@@ -25,8 +25,15 @@ export async function POST(request: Request) {
 
     const totalWeight = bagWeights.reduce((sum, weight) => sum + (parseFloat(weight) || 0), 0);
 
+    const lastLog = await prisma.cropLog.findFirst({
+      where: { farmer: { userId: session.user.id } },
+      orderBy: { logNo: "desc" },
+    });
+    const nextLogNo = lastLog?.logNo ? lastLog.logNo + 1 : 1;
+
     const cropLog = await prisma.cropLog.create({
       data: {
+        logNo: nextLogNo,
         farmerId: farmer.id,
         cropType,
         bagWeights,

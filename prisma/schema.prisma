@@ -60,6 +60,7 @@ model Product {
 
 model Bill {
   id         String   @id @default(cuid())
+  billNo     Int      @default(0)
   farmerId   String
   farmer     Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   category   String   // 'FERTILIZER' or 'PESTICIDE'
@@ -73,6 +74,7 @@ model Bill {
 
 model CashTransaction {
   id         String   @id @default(cuid())
+  receiptNo  Int      @default(0)
   farmerId   String
   farmer     Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   type       String   // 'TAKEN' or 'GIVEN'
@@ -83,6 +85,7 @@ model CashTransaction {
 
 model CropLog {
   id          String   @id @default(cuid())
+  logNo       Int      @default(0)
   farmerId    String
   farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   cropType    String   // 'COTTON' or 'MIRCHI'

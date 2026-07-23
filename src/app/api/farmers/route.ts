@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(farmer, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating farmer:", error);
     return NextResponse.json({ error: error.message || "Failed to create farmer" }, { status: 500 });
   }

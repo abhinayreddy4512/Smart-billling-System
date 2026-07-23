@@ -1,5 +1,6 @@
 import { encrypt } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -49,12 +50,15 @@ export async function POST(request: Request) {
       success: true,
       user: { id: user.id, email: user.email, shopName: user.shopName },
     });
-    response.cookies.set("session", token, {
+    
+    const cookieStore = await cookies();
+    cookieStore.set("session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 7 * 24 * 60 * 60,
       path: "/",
     });
+    
     return response;
   } catch (error: any) {
     console.error("Login error:", error);

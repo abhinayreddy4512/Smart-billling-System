@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { differenceInDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 const INTEREST_RATE_PER_MONTH = 0.02; // 2% per month (2 rupees per 100)
 
@@ -11,6 +12,9 @@ export async function GET(
   try {
     const { id } = await params;
     const today = new Date();
+    
+    const session = await getSession();
+    const shopInfo = session?.user || null;
 
     const farmer = await prisma.farmer.findUnique({
       where: { id: id.toUpperCase() },
@@ -80,6 +84,7 @@ export async function GET(
     const finalAmount = totalPrincipal + totalInterest;
 
     return NextResponse.json({
+      shopInfo,
       farmer,
       processedBills,
       processedCash,

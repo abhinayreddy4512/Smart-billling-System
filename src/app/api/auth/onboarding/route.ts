@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { encrypt } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { cookies } from "next/headers";
 
 export async function POST(request: Request) {
   try {
@@ -53,13 +54,16 @@ export async function POST(request: Request) {
     };
     const token = await encrypt(updatedSession);
     const response = NextResponse.json({ success: true });
-    response.cookies.set("session", token, {
+    
+    const cookieStore = await cookies();
+    cookieStore.set("session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60,
       path: "/",
     });
+    
     return response;
   } catch (err: any) {
     console.error("Onboarding error:", err);

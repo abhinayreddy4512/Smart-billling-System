@@ -38,23 +38,44 @@ export default function TotalFinalPage() {
     if (!data) return;
 
     const doc = new jsPDF();
-    const { farmer, summary, processedBills, processedCash, processedCrops } = data;
+    const { shopInfo, farmer, summary, processedBills, processedCash, processedCrops } = data;
 
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(41, 128, 185);
-    doc.text("Final Settlement Statement", 14, 22);
+    // Header - Shop Details
+    if (shopInfo?.shopName) {
+      doc.setFontSize(26);
+      doc.setTextColor(41, 128, 185);
+      doc.setFont("helvetica", "bold");
+      doc.text(shopInfo.shopName.toUpperCase(), 14, 20);
+      
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.setFont("helvetica", "normal");
+      if (shopInfo.ownerName) {
+        doc.text(`Proprietor: ${shopInfo.ownerName}`, 14, 28);
+      }
+    }
+
+    doc.setFontSize(18);
+    doc.setTextColor(44, 62, 80);
+    doc.setFont("helvetica", "bold");
+    doc.text("Final Settlement Statement", 14, shopInfo?.shopName ? 40 : 22);
 
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(`Generated on: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 30);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated on: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, shopInfo?.shopName ? 48 : 30);
 
+    const initialY = shopInfo?.shopName ? 60 : 40;
+    
     // Farmer Details
     doc.setFontSize(12);
-    doc.setTextColor(40);
-    doc.text(`Farmer ID: ${farmer.id}`, 14, 40);
-    doc.text(`Name: ${farmer.name}`, 14, 46);
-    doc.text(`Phone: ${farmer.phone}`, 14, 52);
+    doc.setTextColor(44, 62, 80);
+    doc.setFont("helvetica", "bold");
+    doc.text("Farmer Details:", 14, initialY);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Name: ${farmer.name}`, 14, initialY + 6);
+    doc.text(`ID: ${farmer.id}`, 14, initialY + 12);
+    doc.text(`Phone: ${farmer.phone}`, 14, initialY + 18);
 
     // Filter categories
     const pesticides = processedBills.filter((b: any) => b.category === "PESTICIDE");
@@ -73,7 +94,7 @@ export default function TotalFinalPage() {
     const totalUnsettledCrops = sumFinal(unsettledCrops);
     const grandTotal = totalPesticides + totalFertilizers + totalTaken - totalGiven - totalUnsettledCrops;
 
-    let startY = 65;
+    let startY = initialY + 28;
 
     // Helper for tables
     const renderTable = (title: string, items: any[], headColor: number[]) => {

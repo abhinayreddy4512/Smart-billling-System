@@ -8,52 +8,52 @@ import { format } from "date-fns";
 
 export default function FarmerHistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [allFarmers, setAllFarmers] = useState<any[]>([]);
+  const [filteredFarmers, setFilteredFarmers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [farmerData, setFarmerData] = useState<any>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Debounced search for suggestions
+  // Fetch all farmers on mount
   useEffect(() => {
-    const delayDebounceFn = setTimeout(async () => {
-      if (searchQuery.trim().length > 0) {
-        try {
-          const res = await fetch(`/api/farmers/search?q=${encodeURIComponent(searchQuery)}`);
-          if (res.ok) {
-            const data = await res.json();
-            setSearchResults(data);
-            setShowDropdown(true);
-          }
-        } catch (err) {
-          console.error("Failed to fetch suggestions");
+    const fetchFarmers = async () => {
+      try {
+        const res = await fetch("/api/farmers");
+        if (res.ok) {
+          const data = await res.json();
+          setAllFarmers(data);
+          setFilteredFarmers(data);
         }
-      } else {
-        setSearchResults([]);
-        setShowDropdown(false);
-      }
-    }, 100);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
-
-  // Click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
+      } catch (err) {
+        setError("Failed to load farmers list.");
+      } finally {
+        setLoading(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    fetchFarmers();
   }, []);
+
+  // Filter farmers locally based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredFarmers(allFarmers);
+    } else {
+      const q = searchQuery.toLowerCase();
+      setFilteredFarmers(
+        allFarmers.filter(f => 
+          f.name.toLowerCase().includes(q) || 
+          f.farmerNo.toLowerCase().includes(q) ||
+          f.phone.includes(q)
+        )
+      );
+    }
+  }, [searchQuery, allFarmers]);
 
   const fetchFarmerHistory = async (id: string) => {
     setLoading(true);
     setError("");
     setFarmerData(null);
-    setShowDropdown(false);
+    
 
     try {
       const res = await fetch(`/api/farmers/${id}/history`);
@@ -69,22 +69,16 @@ export default function FarmerHistoryPage() {
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery) return;
-    
-    // If they press enter and there's a result, pick the first one, or try fetching exactly
-    if (searchResults.length > 0) {
-      fetchFarmerHistory(searchResults[0].farmerNo);
-      setSearchQuery(searchResults[0].name);
-    } else {
-      fetchFarmerHistory(searchQuery.toUpperCase());
+  const handleViewPdfDirectly = async (farmer: any) => {
+    try {
+      const res = await fetch(`/api/farmers/${farmer.farmerNo}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        generatePDF(data);
+      }
+    } catch (err) {
+      console.error("Error generating PDF", err);
     }
-  };
-
-  const handleSelectFarmer = (farmer: any) => {
-    setSearchQuery(farmer.name);
-    fetchFarmerHistory(farmer.farmerNo);
   };
 
   const getTimeline = () => {
@@ -97,8 +91,8 @@ export default function FarmerHistoryPage() {
     return tl.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
   };
 
-  const handleExportPDF = () => {
-    if (!farmerData) return;
+  const generatePDF = (dataToExport: any) => {
+    if (!dataToExport) return;
 
     const doc = new jsPDF();
 
@@ -108,60 +102,92 @@ export default function FarmerHistoryPage() {
 
     // Farmer Info
     doc.setFontSize(12);
-    doc.text(`Farmer ID: ${farmerData.farmerNo}`, 14, 32);
-    doc.text(`Name: ${farmerData.name}`, 14, 38);
-    doc.text(`Phone: ${farmerData.phone}`, 14, 44);
+    doc.text(`Farmer ID: ${dataToExport.farmerNo}`, 14, 32);
+    doc.text(`Name: ${dataToExport.name}`, 14, 38);
+    doc.text(`Phone: ${dataToExport.phone}`, 14, 44);
 
-    // Table Data
-    const tableColumn = ["Date", "Bill ID", "Type", "Details", "Amount"];
-    const tableRows: any[] = [];
-    
-    const timeline = getTimeline();
+    let currentY = 55;
 
-    timeline.forEach((item: any) => {
-      let type = "";
-      let details = "";
-      let amountStr = "";
-
-      if (item.timelineType === "BILL") {
-        type = "Purchase";
-        details = `${item.category}: ${item.product} (x${item.quantity})`;
-        amountStr = `Owes ₹${item.total.toFixed(2)}`;
-      } else if (item.timelineType === "CASH") {
-        type = item.type === "TAKEN" ? "Cash Loan" : "Repayment";
-        details = item.type === "TAKEN" ? "Farmer borrowed cash" : "Farmer repaid cash";
-        amountStr = item.type === "TAKEN" ? `Owes ₹${item.amount.toFixed(2)}` : `Paid ₹${item.amount.toFixed(2)}`;
-      } else if (item.timelineType === "CROP_LOG") {
-        type = "Crop Sale";
-        const bagsArr = Array.isArray(item.bagWeights) ? item.bagWeights : JSON.parse(item.bagWeights || "[]");
-        details = `${item.cropType}: ${bagsArr.length} bags, ${item.totalWeight}kg @ ₹${item.price || 0}/100kg\nStatus: ${item.isSettled ? 'Settled' : 'Not Settled'}`;
-        const total = (item.totalWeight / 100) * (item.price || 0);
-        amountStr = `Value ₹${total.toFixed(2)}`;
-      }
-
-      tableRows.push([
-        format(item.dateObj, "dd/MM/yyyy"),
-        item.billNo || item.receiptNo || item.logNo || "-",
-        type,
-        details,
-        amountStr
+    // SECTION 1: Billing (Purchases)
+    if (dataToExport.bills && dataToExport.bills.length > 0) {
+      doc.setFontSize(14);
+      doc.text("Billing & Purchases", 14, currentY);
+      
+      const billRows = dataToExport.bills.map((b: any) => [
+        format(new Date(b.date), "dd/MM/yyyy"),
+        b.billNo,
+        `${b.category}: ${b.product}`,
+        b.quantity,
+        `Rs. ${b.total.toFixed(2)}`
       ]);
-    });
 
-    autoTable(doc, {
-      startY: 50,
-      head: [tableColumn],
-      body: tableRows,
-      theme: "grid",
-      headStyles: { fillColor: [41, 128, 185] },
-      styles: { overflow: 'linebreak', cellWidth: 'wrap' },
-      columnStyles: {
-        3: { cellWidth: 70 }, // Details column width fixed so it wraps text nicely
-      }
-    });
+      autoTable(doc, {
+        startY: currentY + 5,
+        head: [["Date", "Bill ID", "Item", "Qty", "Total Cost"]],
+        body: billRows,
+        theme: "grid",
+        headStyles: { fillColor: [41, 128, 185] },
+        styles: { overflow: 'linebreak', cellWidth: 'wrap' }
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 15;
+    }
+
+    // SECTION 2: Cash Transactions
+    if (dataToExport.cashTransactions && dataToExport.cashTransactions.length > 0) {
+      doc.setFontSize(14);
+      doc.text("Cash Transactions", 14, currentY);
+      
+      const cashRows = dataToExport.cashTransactions.map((c: any) => [
+        format(new Date(c.date), "dd/MM/yyyy"),
+        c.receiptNo,
+        c.type === "TAKEN" ? "Loan Taken" : "Repayment",
+        `Rs. ${c.amount.toFixed(2)}`
+      ]);
+
+      autoTable(doc, {
+        startY: currentY + 5,
+        head: [["Date", "Receipt ID", "Type", "Amount"]],
+        body: cashRows,
+        theme: "grid",
+        headStyles: { fillColor: [39, 174, 96] },
+        styles: { overflow: 'linebreak', cellWidth: 'wrap' }
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 15;
+    }
+
+    // SECTION 3: Crop Sales
+    if (dataToExport.cropLogs && dataToExport.cropLogs.length > 0) {
+      doc.setFontSize(14);
+      doc.text("Crop Sales", 14, currentY);
+      
+      const cropRows = dataToExport.cropLogs.map((c: any) => {
+        const bagsArr = Array.isArray(c.bagWeights) ? c.bagWeights : JSON.parse(c.bagWeights || "[]");
+        const total = (c.totalWeight / 100) * (c.price || 0);
+        return [
+          format(new Date(c.date), "dd/MM/yyyy"),
+          c.logNo,
+          c.cropType,
+          `${bagsArr.length} bags (${c.totalWeight}kg)`,
+          `Rs. ${total.toFixed(2)}`
+        ];
+      });
+
+      autoTable(doc, {
+        startY: currentY + 5,
+        head: [["Date", "Log ID", "Crop", "Quantity", "Total Value"]],
+        body: cropRows,
+        theme: "grid",
+        headStyles: { fillColor: [211, 84, 0] },
+        styles: { overflow: 'linebreak', cellWidth: 'wrap' }
+      });
+    }
 
     const pdfBlobUrl = doc.output("bloburl");
     window.open(pdfBlobUrl, "_blank");
+  };
+
+  const handleExportPDF = () => {
+    generatePDF(farmerData);
   };
 
   const timeline = getTimeline();
@@ -189,65 +215,74 @@ export default function FarmerHistoryPage() {
       </div>
 
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
-        <form onSubmit={handleSearch} className="flex gap-4 items-end">
-          <div className="flex-1 space-y-2 relative" ref={dropdownRef}>
-            <label htmlFor="searchQuery" className="block text-sm font-medium text-slate-700">
-              Search by Farmer Name, ID, or Phone
-            </label>
+        <div className="mb-6">
+          <label htmlFor="searchQuery" className="block text-sm font-medium text-slate-700 mb-2">
+            Search Farmers
+          </label>
+          <div className="relative">
+            <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               id="searchQuery"
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onFocus={() => {
-                if (searchResults.length > 0) setShowDropdown(true);
-              }}
-              placeholder="e.g. F-001 or 9876543210"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-              autoComplete="off"
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by Name, ID, or Phone..."
+              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
             />
-            {/* Suggestions Dropdown */}
-            {showDropdown && searchResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                <ul className="py-1">
-                  {searchResults.map((farmer) => (
-                    <li
-                      key={farmer.id}
-                      onClick={() => handleSelectFarmer(farmer)}
-                      className="px-4 py-2 hover:bg-emerald-50 cursor-pointer flex justify-between items-center transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="bg-emerald-100 p-1.5 rounded-full">
-                          <User className="w-4 h-4 text-emerald-700" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-800">{farmer.name}</p>
-                          <p className="text-xs text-slate-500">ID: {farmer.farmerNo} | Phone: {farmer.phone}</p>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 h-[42px] rounded-lg font-medium transition-all disabled:opacity-70"
-          >
-            {loading ? "Searching..." : <><Search className="w-4 h-4" /> Search</>}
-          </button>
-        </form>
+        </div>
 
         {error && (
-          <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">
+          <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">
             {error}
           </div>
         )}
+
+        <div className="overflow-x-auto border border-slate-200 rounded-lg max-h-[400px] overflow-y-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="sticky top-0 bg-slate-50 z-10">
+              <tr className="text-slate-600 text-sm uppercase tracking-wider shadow-sm">
+                <th className="px-6 py-4 font-semibold border-b">ID</th>
+                <th className="px-6 py-4 font-semibold border-b">Name</th>
+                <th className="px-6 py-4 font-semibold border-b">Phone</th>
+                <th className="px-6 py-4 font-semibold border-b text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">Loading farmers...</td>
+                </tr>
+              ) : filteredFarmers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">No farmers found.</td>
+                </tr>
+              ) : (
+                filteredFarmers.map((farmer) => (
+                  <tr key={farmer.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium text-slate-700">{farmer.farmerNo}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900 font-semibold">{farmer.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{farmer.phone}</td>
+                    <td className="px-6 py-4 text-right space-x-3">
+                      <button
+                        onClick={() => fetchFarmerHistory(farmer.farmerNo)}
+                        className="text-emerald-600 font-medium hover:text-emerald-800 text-sm inline-flex items-center gap-1"
+                      >
+                        <History className="w-4 h-4" /> View UI
+                      </button>
+                      <button
+                        onClick={() => handleViewPdfDirectly(farmer)}
+                        className="bg-slate-800 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-slate-700 transition-colors inline-flex items-center gap-1"
+                      >
+                        <FileText className="w-4 h-4" /> View PDF
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {farmerData && (

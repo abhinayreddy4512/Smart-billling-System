@@ -164,7 +164,7 @@ export default function LoginPage() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       onFocus={() => {
-                        if (!phone) setPhone("+91 ");
+                        if (!phone) setPhone("+91");
                       }}
                       className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                       placeholder="e.g. +91 9876543210"

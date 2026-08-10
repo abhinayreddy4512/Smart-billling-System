@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { CheckCircle2, Save, FileText, IndianRupee } from "lucide-react";
 import { format } from "date-fns";
 import { AlertModal } from "@/components/ui/AlertModal";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface SettlementProps {
   farmerId: string;
@@ -11,6 +13,7 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [cropLogs, setCropLogs] = useState<any[]>([]);
   const [settlements, setSettlements] = useState<any[]>([]);
+  const [farmerInfo, setFarmerInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   
@@ -26,11 +29,12 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
   const fetchHistory = async () => {
     if (!farmerId) return;
     try {
-      const res = await fetch(`/api/settlement/${farmerId}`);
-      if (!res.ok) throw new Error("Failed to fetch settlement history");
+      const res = await fetch(`/api/farmers/${farmerId}/history`);
+      if (!res.ok) throw new Error("Failed to fetch farmer history");
       const data = await res.json();
+      setFarmerInfo(data);
       setCropLogs(data.cropLogs || []);
-      setSettlements(data.settlements || []);
+      setSettlements(data.cropSettlements || []);
       setSelectedLogs([]);
     } catch (err: any) {
       setError(err.message);
@@ -72,7 +76,7 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
       const res = await fetch(`/api/settlement`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ farmerId, cropLogIds: selectedLogs, date }),
+        body: JSON.stringify({ farmerId: farmerInfo.id, cropLogIds: selectedLogs, date }),
       });
       if (!res.ok) throw new Error("Failed to record settlement");
       
@@ -80,6 +84,89 @@ export default function SettlementSection({ farmerId }: SettlementProps) {
       setModalTitle("Entry Successful");
       setModalMessage("Settlement recorded successfully!");
       setModalOpen(true);
+
+      // Generate PDF and Send Email
+      try {
+        if (farmerInfo) {
+          const doc = new jsPDF();
+          doc.setFontSize(22);
+          doc.setTextColor(21, 128, 61);
+          doc.text("SRI ABHINAYA FERTILIZERS", 105, 20, { align: "center" });
+
+          doc.setFontSize(10);
+          doc.setTextColor(100);
+          doc.text("Settlement Receipt", 105, 26, { align: "center" });
+
+          doc.setFontSize(12);
+          doc.setTextColor(0);
+          doc.text(`Customer Name: ${farmerInfo.name}`, 14, 40);
+          doc.text(`Farmer ID: ${farmerInfo.farmerNo}`, 14, 47);
+          doc.text(`Phone: ${farmerInfo.phone}`, 14, 54);
+          
+          doc.text(`Date of Settlement: ${date}`, 140, 40);
+
+          const settledLogs = cropLogs.filter(log => selectedLogs.includes(log.id));
+
+          const tableData = settledLogs.map((log, index) => {
+            const billNo = `#${log.id.slice(-6).toUpperCase()}`;
+            const total = (log.totalWeight / 100) * (log.price || 0);
+            return [
+              index + 1,
+              billNo,
+              log.cropType,
+              format(new Date(log.date), "dd/MM/yy"),
+              `${log.totalWeight} kg`,
+              `Rs. ${total.toFixed(2)}`
+            ];
+          });
+
+          autoTable(doc, {
+            startY: 65,
+            head: [["S.No.", "Bill ID", "Crop", "Entry Date", "Weight", "Bill Amount"]],
+            body: tableData,
+            theme: "striped",
+            headStyles: { fillColor: [21, 128, 61] },
+          });
+
+          const finalY = (doc as any).lastAutoTable.finalY || 65;
+          
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.text(`Total Settled Amount: Rs. ${selectedAmount.toFixed(2)}`, 140, finalY + 15);
+
+          const pdfBase64 = doc.output("datauristring");
+
+          const html = `
+            <h2 style="color: #15803d;">Greetings From Sri Abhinaya Fertilizers</h2>
+            <p><strong>Customer Name:</strong> ${farmerInfo.name}</p>
+            <p><strong>Customer ID:</strong> ${farmerInfo.farmerNo}</p>
+            <p><strong>Phone:</strong> ${farmerInfo.phone}</p>
+            <p><strong>Date of Settlement:</strong> ${date}</p>
+            <br/>
+            <h3>This amount has been settled for the selected bills.</h3>
+            <p><strong>Status:</strong> Fully Settled</p>
+            <p><strong>Amount Settled:</strong> Rs. ${selectedAmount.toFixed(2)}</p>
+            <br/>
+            <p>Please find your detailed settlement receipt attached as a PDF.</p>
+          `;
+
+          if (farmerInfo.email) {
+            await fetch("/api/email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: farmerInfo.email,
+                subject: `Crop Settlement - ${date}`,
+                html,
+                pdfBase64,
+                fileName: `Settlement_${date}.pdf`
+              })
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Error sending email:", e);
+      }
       
       setSelectedLogs([]);
       fetchHistory();

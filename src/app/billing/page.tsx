@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { Receipt, Camera, Check, X, Search, ShoppingCart, Plus, Trash2 } from "lucide-react";
 import Webcam from "react-webcam";
 import { AlertModal } from "@/components/ui/AlertModal";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type CartItem = {
   productId: string;
@@ -181,6 +183,81 @@ export default function BillingPage() {
       setModalTitle("Entry Successful");
       setModalMessage(`Bill generated successfully for all items!\nBill ID: ${data[0]?.billNo || "-"}`);
       setModalOpen(true);
+
+      // Generate PDF and Send Email
+      try {
+        const doc = new jsPDF();
+        doc.setFontSize(22);
+        doc.setTextColor(21, 128, 61);
+        doc.text("SRI ABHINAYA FERTILIZERS", 105, 20, { align: "center" });
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text("Pesticides, Seeds & Fertilizers", 105, 26, { align: "center" });
+
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        doc.text(`Customer Name: ${farmerInfo.name}`, 14, 40);
+        doc.text(`Farmer ID: ${farmerInfo.farmerNo}`, 14, 47);
+        doc.text(`Phone: ${farmerInfo.phone}`, 14, 54);
+        
+        const billNo = data[0]?.billNo || "N/A";
+        doc.text(`Bill No: ${billNo}`, 140, 40);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 47);
+
+        const tableData = cart.map((item, index) => [
+          index + 1,
+          `${item.name} ${item.size ? `(${item.size})` : ""}`,
+          item.category,
+          item.quantity,
+          `Rs. ${parseFloat(item.customPrice).toFixed(2)}`,
+          `Rs. ${item.total.toFixed(2)}`,
+        ]);
+
+        autoTable(doc, {
+          startY: 65,
+          head: [["S.No", "Product Name", "Category", "Quantity", "Unit Price", "Total"]],
+          body: tableData,
+          theme: "striped",
+          headStyles: { fillColor: [21, 128, 61] },
+        });
+
+        const finalY = (doc as any).lastAutoTable.finalY || 65;
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Grand Total: Rs. ${cartTotal.toFixed(2)}`, 140, finalY + 15);
+
+        const pdfBase64 = doc.output("datauristring");
+
+        const html = `
+          <h2 style="color: #15803d;">Greetings From Sri Abhinaya Fertilizers</h2>
+          <p><strong>Customer Name:</strong> ${farmerInfo.name}</p>
+          <p><strong>Customer ID:</strong> ${farmerInfo.farmerNo}</p>
+          <p><strong>Phone:</strong> ${farmerInfo.phone}</p>
+          <p><strong>Bill No:</strong> ${billNo}</p>
+          <p><strong>Transaction Type:</strong> Pesticides & Fertilizers</p>
+          <p><strong>Date of Entry:</strong> ${new Date().toLocaleDateString()}</p>
+          <p><strong>Total Amount:</strong> Rs. ${cartTotal.toFixed(2)}</p>
+          <br/>
+          <p>Please find your detailed bill attached as a PDF.</p>
+        `;
+
+        if (farmerInfo.email) {
+          await fetch("/api/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: farmerInfo.email,
+              subject: `Bill Generated - ${billNo}`,
+              html,
+              pdfBase64,
+              fileName: `Bill_${billNo}.pdf`
+            })
+          });
+        }
+      } catch (e) {
+        console.error("Error sending email:", e);
+      }
       
       // Reset form
       setCart([]);

@@ -4,6 +4,8 @@ import { useState, useRef } from "react";
 import { Banknote, Camera, Check, X, Search, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import Webcam from "react-webcam";
 import { AlertModal } from "@/components/ui/AlertModal";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function CashSectionPage() {
   const [farmerId, setFarmerId] = useState("");
@@ -85,6 +87,74 @@ export default function CashSectionPage() {
       setModalTitle("Entry Successful");
       setModalMessage(`Cash ${transactionType.toLowerCase()} transaction recorded successfully!\nReceipt ID: ${data.receiptNo || "-"}`);
       setModalOpen(true);
+
+      // Generate PDF and Send Email
+      try {
+        const doc = new jsPDF();
+        doc.setFontSize(22);
+        doc.setTextColor(21, 128, 61);
+        doc.text("SRI ABHINAYA FERTILIZERS", 105, 20, { align: "center" });
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text("Cash Transaction Receipt", 105, 26, { align: "center" });
+
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        doc.text(`Customer Name: ${farmerInfo.name}`, 14, 40);
+        doc.text(`Farmer ID: ${farmerInfo.farmerNo}`, 14, 47);
+        doc.text(`Phone: ${farmerInfo.phone}`, 14, 54);
+        
+        const receiptNo = data.receiptNo || "N/A";
+        const dateStr = new Date().toLocaleDateString();
+        doc.text(`Receipt No: ${receiptNo}`, 140, 40);
+        doc.text(`Date: ${dateStr}`, 140, 47);
+
+        const typeStr = transactionType === "TAKEN" ? "Borrowed" : "Amount Repaid";
+        const amt = parseFloat(amount).toFixed(2);
+
+        doc.setFontSize(14);
+        doc.text(`Transaction Type: ${typeStr}`, 14, 70);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${typeStr}: Rs. ${amt}`, 14, 80);
+
+        if (photo) {
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.text("Photo Proof attached in system.", 14, 95);
+        }
+
+        const pdfBase64 = doc.output("datauristring");
+
+        const term = transactionType === "TAKEN" ? "Borrowed" : "Amount Repaid";
+        const html = `
+          <h2 style="color: #15803d;">Greetings From Sri Abhinaya Fertilizers</h2>
+          <p><strong>Customer Name:</strong> ${farmerInfo.name}</p>
+          <p><strong>Customer ID:</strong> ${farmerInfo.farmerNo}</p>
+          <p><strong>Phone:</strong> ${farmerInfo.phone}</p>
+          <p><strong>Transaction Date:</strong> ${dateStr}</p>
+          <br/>
+          <h3><strong>${term}: ₹${amt}</strong></h3>
+          <br/>
+          <p>Please find your transaction receipt attached as a PDF.</p>
+        `;
+
+        if (farmerInfo.email) {
+          await fetch("/api/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: farmerInfo.email,
+              subject: `Cash Transaction - ${dateStr}`,
+              html,
+              pdfBase64,
+              fileName: `Receipt_${receiptNo}.pdf`
+            })
+          });
+        }
+      } catch (e) {
+        console.error("Error sending email:", e);
+      }
       
       // Reset form partially
       setAmount("");

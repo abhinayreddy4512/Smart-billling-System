@@ -4,6 +4,8 @@ import React, { useState, useRef } from "react";
 import { Sprout, Search, Save, CheckCircle2, Plus, X, List, HandCoins } from "lucide-react";
 import SettlementSection from "./SettlementSection";
 import { AlertModal } from "@/components/ui/AlertModal";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function CropsLoggingPage() {
   const [activeTab, setActiveTab] = useState<"ENTRY" | "SETTLEMENT">("ENTRY");
@@ -79,6 +81,108 @@ export default function CropsLoggingPage() {
       setModalOpen(true);
       
       setSaveStatus("Saved successfully!");
+
+      // Generate PDF and Send Email
+      try {
+        const doc = new jsPDF();
+        doc.setFontSize(22);
+        doc.setTextColor(21, 128, 61);
+        doc.text("SRI ABHINAYA FERTILIZERS", 105, 20, { align: "center" });
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text("Pesticides, Seeds & Fertilizers", 105, 26, { align: "center" });
+
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        doc.text(`Customer Name: ${farmerInfo.name}`, 14, 40);
+        doc.text(`Farmer ID: ${farmerInfo.farmerNo}`, 14, 47);
+        doc.text(`Phone: ${farmerInfo.phone}`, 14, 54);
+        
+        const logNo = newLog.logNo || "N/A";
+        doc.text(`Bill No: ${logNo}`, 140, 40);
+        doc.text(`Date: ${entryDate}`, 140, 47);
+        doc.text(`Crop: ${cropType}`, 140, 54);
+
+        const tableData = weightsToSave.map((w, index) => [
+          index + 1,
+          `${w.toFixed(2)} kg`,
+        ]);
+
+        autoTable(doc, {
+          startY: 65,
+          head: [["S.No.", "Bag Weight"]],
+          body: tableData,
+          theme: "striped",
+          headStyles: { fillColor: [21, 128, 61] },
+        });
+
+        const finalY = (doc as any).lastAutoTable.finalY || 65;
+        
+        const totalW = weightsToSave.reduce((a, b) => a + b, 0);
+        const pPer100 = parseFloat(cropPrice);
+        const tVal = (totalW / 100) * pPer100;
+
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        doc.text(`Total Weight: ${totalW.toFixed(2)} kg`, 14, finalY + 10);
+        doc.text(`Price (per 100kg): Rs. ${pPer100.toFixed(2)}`, 14, finalY + 17);
+        
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Total Amount: Rs. ${tVal.toFixed(2)}`, 140, finalY + 17);
+
+        const pdfBase64 = doc.output("datauristring");
+
+        const html = `
+          <h2 style="color: #15803d;">Greetings From Sri Abhinaya Fertilizers</h2>
+          <p><strong>Customer Name:</strong> ${farmerInfo.name}</p>
+          <p><strong>Customer ID:</strong> ${farmerInfo.farmerNo}</p>
+          <p><strong>Phone:</strong> ${farmerInfo.phone}</p>
+          <p><strong>Bill No:</strong> ${logNo}</p>
+          <p><strong>Product:</strong> ${cropType}</p>
+          <p><strong>Date of Entry:</strong> ${entryDate}</p>
+          <br/>
+          <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 300px;">
+            <tr style="background-color: #15803d; color: white;">
+              <th>S.No.</th>
+              <th>Bag Weight</th>
+            </tr>
+            ${weightsToSave.map((w, idx) => `
+              <tr>
+                <td align="right">${idx + 1}</td>
+                <td align="right">${w.toFixed(2)} kg</td>
+              </tr>
+            `).join('')}
+            <tr>
+              <th align="right">Total Weight</th>
+              <th align="right">${totalW.toFixed(2)} kg</th>
+            </tr>
+          </table>
+          <br/>
+          <p><strong>Price:</strong> Rs. ${pPer100.toFixed(2)} (per 100kg)</p>
+          <p><strong>Total Amount:</strong> Rs. ${tVal.toFixed(2)}</p>
+          <br/>
+          <p>Please find your detailed bill attached as a PDF.</p>
+        `;
+
+        if (farmerInfo.email) {
+          await fetch("/api/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: farmerInfo.email,
+              subject: `${cropType} Purchase - ${logNo}`,
+              html,
+              pdfBase64,
+              fileName: `${cropType}_Bill_${logNo}.pdf`
+            })
+          });
+        }
+      } catch (e) {
+        console.error("Error sending email:", e);
+      }
+
       setBagWeights([]); // Reset form after saving
       setCropPrice("");
       setTimeout(() => setSaveStatus(""), 3000);

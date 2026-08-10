@@ -78,7 +78,7 @@ export default function AddFarmerPage() {
 
       <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
           <div className="space-y-2">
             <label htmlFor="name" className="block text-sm font-medium text-slate-700">
               Full Name *
@@ -102,6 +102,7 @@ export default function AddFarmerPage() {
               id="phone"
               name="phone"
               required
+              defaultValue="+91 "
               placeholder="e.g. +91 9876543210"
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
             />

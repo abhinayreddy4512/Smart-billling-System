@@ -31,7 +31,7 @@ export default async function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-row bg-slate-50 text-green-950">
+      <body className="min-h-full flex flex-col md:flex-row bg-slate-50 text-green-950 overflow-x-hidden">
         <AppWrapper shopName={session?.user?.shopName}>
           {children}
         </AppWrapper>

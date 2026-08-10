@@ -20,7 +20,7 @@ export function AppWrapper({ children, shopName }: { children: React.ReactNode, 
   return (
     <>
       <Sidebar shopName={shopName} />
-      <main className="flex-1 overflow-y-auto p-8 h-screen">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 h-[calc(100vh-68px)] md:h-screen w-full relative">
         {children}
       </main>
     </>

@@ -27,6 +27,7 @@ export async function login(user: any) {
       email: user.email,
       shopName: user.shopName,
       ownerName: user.ownerName,
+      role: "owner", // Explicitly define owner role
     } 
   };
   const session = await encrypt(sessionData);
@@ -37,6 +38,29 @@ export async function login(user: any) {
     secure: process.env.NODE_ENV === "production",
     // No maxAge or expires means this becomes a "Session Cookie"
     // which automatically deletes itself when the browser is closed.
+    path: "/",
+  });
+}
+
+export async function customerLogin(farmer: any, shopOwner: any) {
+  const sessionData = { 
+    user: {
+      id: farmer.id,
+      farmerNo: farmer.farmerNo,
+      name: farmer.name,
+      phone: farmer.phone,
+      shopName: shopOwner.shopName,
+      ownerId: shopOwner.id, // Reference to the shop owner
+      role: "customer", // Explicitly define customer role
+    } 
+  };
+  const session = await encrypt(sessionData);
+  
+  const cookieStore = await cookies();
+  cookieStore.set("session", session, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    // Customer login also session-scoped
     path: "/",
   });
 }

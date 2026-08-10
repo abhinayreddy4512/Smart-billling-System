@@ -7,8 +7,9 @@ export function AppWrapper({ children, shopName }: { children: React.ReactNode, 
   const pathname = usePathname();
   
   const isAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/onboarding";
+  const isCustomerRoute = pathname.startsWith("/customer");
 
-  if (isAuthPage) {
+  if (isAuthPage || isCustomerRoute) {
     return (
       <main className="flex-1 overflow-y-auto min-h-screen">
         {children}

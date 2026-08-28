@@ -78,24 +78,24 @@ export async function GET(
     const { start: periodStart, end: autoPeriodEnd } = computeSettlementPeriod(firstDate);
 
     // Reference date for interest calculation:
-    // Uses custom selected manual settlement date if provided, otherwise autoPeriodEnd
+    // Uses custom selected manual settlement date if provided, otherwise today
     const manualSettlementDate = customSettlementDateStr
       ? new Date(customSettlementDateStr)
       : new Date();
 
     const referenceDate = manualSettlementDate;
 
-    // Filter transactions within the settlement period (up to manual settlement date)
+    // Include ALL transactions for this farmer up to manual settlement date (matching Total Final)
     const billsInPeriod = farmer.bills.filter(
-      (b) => new Date(b.date) >= periodStart && new Date(b.date) <= referenceDate
+      (b) => new Date(b.date) <= referenceDate
     );
 
     const cashInPeriod = farmer.cashTransactions.filter(
-      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= referenceDate
+      (c) => new Date(c.date) <= referenceDate
     );
 
     const cropsInPeriod = farmer.cropLogs.filter(
-      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= referenceDate
+      (c) => new Date(c.date) <= referenceDate
     );
 
     // 1. Process Purchases (Fertilizers & Pesticides) - Accrues Interest till manual settlement date
@@ -163,7 +163,8 @@ export async function GET(
 
     const unsettledCropsTotal = totalCotton + totalMirchi;
 
-    // 4. Final Amount Calculation
+    // 4. Final Amount Calculation:
+    // Shop Purchases + Money Transaction Difference - Unsettled Crops
     const finalAmount = shopPurchasesTotal + moneyTransactionDiff - unsettledCropsTotal;
 
     // Determine current settlement status

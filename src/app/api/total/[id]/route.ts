@@ -42,7 +42,7 @@ export async function GET(
     let totalPrincipal = 0;
     let totalInterest = 0;
     
-    // Process Bills (Farmer owes money)
+    // Process Bills (Farmer owes money) - Accrues Interest
     const processedBills = farmer.bills.map((bill) => {
       const days = Math.max(0, differenceInDays(today, new Date(bill.date)));
       const months = days / 30;
@@ -54,7 +54,7 @@ export async function GET(
       return { ...bill, type: "BILL", days, interest, finalAmount: bill.total + interest };
     });
 
-    // Process Cash (Taken = owes money, Given = paid money)
+    // Process Cash (Taken = owes money, Given = paid money) - Accrues Interest
     const processedCash = farmer.cashTransactions.map((cash) => {
       const days = Math.max(0, differenceInDays(today, new Date(cash.date)));
       const months = days / 30;
@@ -74,21 +74,17 @@ export async function GET(
       }
     });
 
-    // Process Crops
+    // Process Crops - NO INTEREST APPLIED TO COTTON AND MIRCHI! (interest = 0)
     const processedCrops = farmer.cropLogs.map((log) => {
       const amount = (log.totalWeight / 100) * (log.price || 0);
-      const days = Math.max(0, differenceInDays(today, new Date(log.date)));
-      const months = days / 30;
-      let interest = 0;
+      const interest = 0; // Explicitly NO interest for Cotton and Mirchi!
       
       if (!log.isSettled) {
         // Unsettled crops act like money GIVEN (subtracts from farmer's debt)
-        interest = amount * INTEREST_RATE_PER_MONTH * months;
         totalPrincipal -= amount;
-        totalInterest -= interest;
       }
       
-      return { ...log, amount, days, interest, finalAmount: amount + interest };
+      return { ...log, amount, days: 0, interest: 0, finalAmount: amount };
     });
 
     const finalAmount = totalPrincipal + totalInterest;

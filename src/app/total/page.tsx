@@ -38,37 +38,40 @@ export default function TotalFinalPage() {
     if (!data) return;
 
     const doc = new jsPDF();
-    const { shopInfo, farmer, summary, processedBills, processedCash, processedCrops } = data;
+    const { shopInfo, farmer, processedBills, processedCash, processedCrops } = data;
 
     // Header - Shop Details
     if (shopInfo?.shopName) {
-      doc.setFontSize(26);
-      doc.setTextColor(41, 128, 185);
+      doc.setFontSize(24);
+      doc.setTextColor(21, 128, 61);
       doc.setFont("helvetica", "bold");
-      doc.text(shopInfo.shopName.toUpperCase(), 14, 20);
+      doc.text(shopInfo.shopName.toUpperCase(), 105, 20, { align: "center" });
     }
 
-    doc.setFontSize(18);
-    doc.setTextColor(44, 62, 80);
-    doc.setFont("helvetica", "bold");
-    doc.text("Final Settlement Statement", 14, shopInfo?.shopName ? 40 : 22);
-
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setTextColor(100);
     doc.setFont("helvetica", "normal");
-    doc.text(`Generated on: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, shopInfo?.shopName ? 48 : 30);
+    doc.text("Pesticides, Seeds & Fertilizers", 105, 26, { align: "center" });
 
-    const initialY = shopInfo?.shopName ? 60 : 40;
-    
-    // Farmer Details
-    doc.setFontSize(12);
+    doc.setFontSize(16);
     doc.setTextColor(44, 62, 80);
     doc.setFont("helvetica", "bold");
-    doc.text("Farmer Details:", 14, initialY);
+    doc.text("Total Final Statement", 105, 36, { align: "center" });
+
+    doc.setDrawColor(21, 128, 61);
+    doc.setLineWidth(0.5);
+    doc.line(14, 40, 196, 40);
+
+    // Farmer Details
+    doc.setFontSize(11);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "bold");
+    doc.text("Farmer Information", 14, 50);
     doc.setFont("helvetica", "normal");
-    doc.text(`Name: ${farmer.name}`, 14, initialY + 6);
-    doc.text(`ID: ${farmer.farmerNo}`, 14, initialY + 12);
-    doc.text(`Phone: ${farmer.phone}`, 14, initialY + 18);
+    doc.text(`Name: ${farmer.name}`, 14, 57);
+    doc.text(`Farmer ID: ${farmer.farmerNo}`, 14, 63);
+    doc.text(`Phone: ${farmer.phone}`, 14, 69);
+    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 120, 57);
 
     // Filter categories
     const pesticides = processedBills.filter((b: any) => b.category === "PESTICIDE");
@@ -76,7 +79,6 @@ export default function TotalFinalPage() {
     const cashTaken = processedCash.filter((c: any) => c.type === "TAKEN");
     const cashGiven = processedCash.filter((c: any) => c.type === "GIVEN");
     const unsettledCrops = processedCrops.filter((c: any) => !c.isSettled);
-    const settledCrops = processedCrops.filter((c: any) => c.isSettled);
 
     const sumFinal = (arr: any[]) => arr.reduce((acc, item) => acc + item.finalAmount, 0);
 
@@ -85,15 +87,19 @@ export default function TotalFinalPage() {
     const totalTaken = sumFinal(cashTaken);
     const totalGiven = sumFinal(cashGiven);
     const totalUnsettledCrops = sumFinal(unsettledCrops);
-    const grandTotal = totalPesticides + totalFertilizers + totalTaken - totalGiven - totalUnsettledCrops;
 
-    let startY = initialY + 28;
+    const shopPurchases = totalPesticides + totalFertilizers;
+    const moneyDiff = totalTaken - totalGiven;
+    const grandTotal = shopPurchases + moneyDiff - totalUnsettledCrops;
+
+    let startY = 80;
 
     // Helper for tables
     const renderTable = (title: string, items: any[], headColor: number[]) => {
       if (items.length === 0) return;
       doc.setFontSize(12);
       doc.setTextColor(40);
+      doc.setFont("helvetica", "bold");
       doc.text(title, 14, startY - 2);
       
       const rows = items.map((i: any) => [
@@ -116,83 +122,59 @@ export default function TotalFinalPage() {
       startY = (doc as any).lastAutoTable.finalY + 15;
     };
 
-    renderTable("Pesticides (Purchases)", pesticides, [192, 57, 43]); // Red
-    renderTable("Fertilizers (Purchases)", fertilizers, [41, 128, 185]); // Blue
-    renderTable("Cash Taken (Loans)", cashTaken, [211, 84, 0]); // Orange
-    renderTable("Cash Given (Repayments)", cashGiven, [39, 174, 96]); // Green
-    
-    // As per user request: "if not settled add that amount in pdf with interest to money given section"
-    renderTable("Unsettled Crops (Treated as Money Given)", unsettledCrops, [39, 174, 96]); // Green
-    
-    // "of all logs if settled enter how much settled"
-    // Since settled crops don't accrue interest against the final debt (already paid), we just show them
-    if (settledCrops.length > 0) {
-      doc.setFontSize(12);
-      doc.setTextColor(40);
-      doc.text("Settled Crops (Already Paid)", 14, startY - 2);
-      
-      const rows = settledCrops.map((c: any) => [
-        c.logNo || "-",
-        format(new Date(c.date), "dd/MM/yyyy"),
-        c.cropType,
-        `Rs ${c.amount.toFixed(2)}`,
-        `Settled`,
-        `-`,
-        `Rs ${c.amount.toFixed(2)}`
-      ]);
+    renderTable("Pesticides (Purchases)", pesticides, [192, 57, 43]);
+    renderTable("Fertilizers (Purchases)", fertilizers, [41, 128, 185]);
+    renderTable("Cash Taken (Loans)", cashTaken, [211, 84, 0]);
+    renderTable("Cash Given (Repayments)", cashGiven, [39, 174, 96]);
+    renderTable("Unsettled Crops (NO Interest)", unsettledCrops, [39, 174, 96]);
 
-      autoTable(doc, {
-        startY,
-        head: [["ID", "Date", "Crop", "Principal", "Status", "Interest", "Total Settled"]],
-        body: rows,
-        theme: "grid",
-        headStyles: { fillColor: [149, 165, 166] }, // Gray
-        margin: { top: 10 }
-      });
-      startY = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Grand Total Box at the bottom
-    // Check if we need a new page for the summary
+    // Bottom calculation box
     if (startY > 210) {
       doc.addPage();
       startY = 20;
     }
 
     doc.setDrawColor(200);
-    doc.setFillColor(245, 247, 250);
-    doc.rect(14, startY, 182, 70, "FD"); // Increased height for more lines
-    
-    doc.setFontSize(14);
-    doc.setTextColor(40);
-    doc.text("Final Calculation Steps", 18, startY + 8);
-    
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, startY, 182, 65, "FD");
+
     doc.setFontSize(11);
-    
-    // Step 1: Purchases
-    doc.text(`Total Pesticides: Rs ${totalPesticides.toFixed(2)}`, 18, startY + 18);
-    doc.text(`(+) Total Fertilizers: Rs ${totalFertilizers.toFixed(2)}`, 18, startY + 24);
-    const subtotalPurchases = totalPesticides + totalFertilizers;
+    doc.setTextColor(40);
     doc.setFont("helvetica", "bold");
-    doc.text(`(=) Subtotal (Purchases): Rs ${subtotalPurchases.toFixed(2)}`, 18, startY + 30);
-    doc.setFont("helvetica", "normal");
 
-    // Step 2: Cash Taken
-    doc.text(`(+) Total Cash Taken: Rs ${totalTaken.toFixed(2)}`, 18, startY + 38);
-    const totalDebt = subtotalPurchases + totalTaken;
-    doc.setFont("helvetica", "bold");
-    doc.text(`(=) Total Debt Accumulated: Rs ${totalDebt.toFixed(2)}`, 18, startY + 44);
-    doc.setFont("helvetica", "normal");
+    doc.text("Shop Purchases", 20, startY + 12);
+    doc.text(`Rs. ${shopPurchases.toFixed(2)}`, 186, startY + 12, { align: "right" });
 
-    // Step 3: Repayments
-    doc.setTextColor(39, 174, 96); // Green for deductions
-    doc.text(`(-) Minus (Money Given + Unsettled Crops): Rs ${(totalGiven + totalUnsettledCrops).toFixed(2)}`, 18, startY + 52);
-    
-    // Final Line
-    doc.setFontSize(14);
+    doc.text("Money Transaction Difference", 20, startY + 20);
+    const moneyDiffStr = `${moneyDiff < 0 ? "- " : ""}Rs. ${Math.abs(moneyDiff).toFixed(2)}`;
+    doc.text(moneyDiffStr, 186, startY + 20, { align: "right" });
+
+    doc.text("Unsettled Crops", 20, startY + 28);
+    doc.text(`Rs. ${totalUnsettledCrops.toFixed(2)}`, 186, startY + 28, { align: "right" });
+
+    doc.setDrawColor(150);
+    doc.setLineWidth(0.5);
+    doc.line(20, startY + 34, 186, startY + 34);
+
+    doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(192, 57, 43); // Red for final balance
-    doc.text(`Final Outstanding Balance: Rs ${grandTotal.toFixed(2)}`, 85, startY + 63);
+    doc.text("FINAL AMOUNT", 20, startY + 43);
+    doc.text(`Rs. ${Math.abs(grandTotal).toFixed(2)}`, 186, startY + 43, { align: "right" });
+
+    doc.line(20, startY + 48, 186, startY + 48);
+
+    doc.setFontSize(12);
+    const isPayableByFarmer = grandTotal >= 0;
+    const resultLabel = isPayableByFarmer
+      ? "PAYABLE BY FARMER"
+      : "PAYABLE TO FARMER";
+
+    if (isPayableByFarmer) {
+      doc.setTextColor(192, 57, 43);
+    } else {
+      doc.setTextColor(39, 174, 96);
+    }
+    doc.text(resultLabel, 103, startY + 57, { align: "center" });
 
     const pdfBlobUrl = doc.output("bloburl");
     window.open(pdfBlobUrl, "_blank");

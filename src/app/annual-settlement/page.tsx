@@ -5,11 +5,11 @@ import {
   Calculator,
   Search,
   Download,
-  TrendingUp,
   FileText,
-  Send,
   CheckCircle2,
   AlertCircle,
+  ShieldCheck,
+  Clock,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -48,6 +48,9 @@ export default function AnnualSettlementPage() {
       }
       const result = await res.json();
       setData(result);
+      if (result.isAlreadySettled) {
+        setSettled(true);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -57,7 +60,7 @@ export default function AnnualSettlementPage() {
 
   const generatePDF = () => {
     if (!data) return null;
-    const { shopInfo, farmer, summary, periodStart, periodEnd } = data;
+    const { shopInfo, farmer, summary, periodStart, periodEnd, status } = data;
 
     const doc = new jsPDF();
 
@@ -86,7 +89,7 @@ export default function AnnualSettlementPage() {
     doc.setFontSize(11);
     doc.setTextColor(0);
     doc.setFont("helvetica", "bold");
-    doc.text("Farmer Details", 14, 50);
+    doc.text("Farmer Information", 14, 50);
     doc.setFont("helvetica", "normal");
     doc.text(`Name: ${farmer.name}`, 14, 57);
     doc.text(`Farmer ID: ${farmer.farmerNo}`, 14, 63);
@@ -97,17 +100,17 @@ export default function AnnualSettlementPage() {
     doc.text("Settlement Period", 120, 50);
     doc.setFont("helvetica", "normal");
     doc.text(
-      `From: ${format(new Date(periodStart), "dd/MM/yyyy")}`,
+      `Start Date: ${format(new Date(periodStart), "dd/MM/yyyy")}`,
       120,
       57
     );
     doc.text(
-      `To: ${format(new Date(periodEnd), "dd/MM/yyyy")}`,
+      `Settlement Date: ${format(new Date(periodEnd), "dd/MM/yyyy")}`,
       120,
       63
     );
     doc.text(
-      `Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`,
+      `Status: ${status.replace("_", " ")}`,
       120,
       69
     );
@@ -126,34 +129,34 @@ export default function AnnualSettlementPage() {
       head: [["Category", "Principal (Rs.)", "Interest (Rs.)", "Total (Rs.)"]],
       body: [
         [
-          "Purchases (Pesticides + Fertilizers)",
-          summary.totalPurchases.toFixed(2),
+          "Shop Purchases (Pesticides + Fertilizers)",
+          summary.totalPurchasesPrincipal.toFixed(2),
           summary.totalPurchaseInterest.toFixed(2),
-          (summary.totalPurchases + summary.totalPurchaseInterest).toFixed(2),
+          summary.shopPurchasesTotal.toFixed(2),
         ],
         [
-          "Cash Taken (Borrowed by Farmer)",
-          summary.totalCashTaken.toFixed(2),
+          "Money Taken (Borrowed)",
+          summary.totalCashTakenPrincipal.toFixed(2),
           summary.totalCashTakenInterest.toFixed(2),
-          (summary.totalCashTaken + summary.totalCashTakenInterest).toFixed(2),
+          summary.cashTakenTotal.toFixed(2),
         ],
         [
-          "Cash Given (Repaid by Farmer)",
-          `- ${summary.totalCashGiven.toFixed(2)}`,
+          "Money Given (Repaid)",
+          `- ${summary.totalCashGivenPrincipal.toFixed(2)}`,
           `- ${summary.totalCashGivenInterest.toFixed(2)}`,
-          `- ${(summary.totalCashGiven + summary.totalCashGivenInterest).toFixed(2)}`,
+          `- ${summary.cashGivenTotal.toFixed(2)}`,
         ],
         [
-          "Cotton Transactions",
+          "Cotton Transactions (NO Interest)",
           `- ${summary.totalCotton.toFixed(2)}`,
-          `- ${summary.totalCottonInterest.toFixed(2)}`,
-          `- ${(summary.totalCotton + summary.totalCottonInterest).toFixed(2)}`,
+          `0.00`,
+          `- ${summary.totalCotton.toFixed(2)}`,
         ],
         [
-          "Mirchi Transactions",
+          "Mirchi Transactions (NO Interest)",
           `- ${summary.totalMirchi.toFixed(2)}`,
-          `- ${summary.totalMirchiInterest.toFixed(2)}`,
-          `- ${(summary.totalMirchi + summary.totalMirchiInterest).toFixed(2)}`,
+          `0.00`,
+          `- ${summary.totalMirchi.toFixed(2)}`,
         ],
       ],
       theme: "striped",
@@ -163,56 +166,61 @@ export default function AnnualSettlementPage() {
 
     startY = (doc as any).lastAutoTable.finalY + 15;
 
-    // ---- Interest Calculation Box ----
-    if (startY > 220) {
+    // ---- Exact Layout Calculation Box as requested ----
+    if (startY > 210) {
       doc.addPage();
       startY = 20;
     }
 
     doc.setDrawColor(200);
-    doc.setFillColor(245, 247, 250);
-    doc.rect(14, startY, 182, 55, "FD");
-
-    doc.setFontSize(13);
-    doc.setTextColor(44, 62, 80);
-    doc.setFont("helvetica", "bold");
-    doc.text("Final Calculation", 18, startY + 10);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, startY, 182, 65, "FD");
 
     doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text(
-      `Outstanding Principal: Rs. ${summary.principal.toFixed(2)}`,
-      18,
-      startY + 20
-    );
-    doc.text(
-      `Interest Rate: ${summary.interestRate}% per month`,
-      18,
-      startY + 27
-    );
-    doc.text(
-      `Total Interest: Rs. ${summary.interestAmount.toFixed(2)}`,
-      18,
-      startY + 34
-    );
-
-    doc.setFontSize(14);
+    doc.setTextColor(40);
     doc.setFont("helvetica", "bold");
-    if (summary.totalAmount >= 0) {
-      doc.setTextColor(192, 57, 43);
-      doc.text(
-        `Amount Payable by Farmer: Rs. ${summary.totalAmount.toFixed(2)}`,
-        18,
-        startY + 46
-      );
+
+    // Line 1: Shop Purchases
+    doc.text("Shop Purchases", 20, startY + 12);
+    doc.text(`Rs. ${summary.shopPurchasesTotal.toFixed(2)}`, 186, startY + 12, { align: "right" });
+
+    // Line 2: Money Transaction Difference
+    doc.text("Money Transaction Difference", 20, startY + 20);
+    const moneyDiffStr = `${summary.moneyTransactionDiff < 0 ? "- " : ""}Rs. ${Math.abs(summary.moneyTransactionDiff).toFixed(2)}`;
+    doc.text(moneyDiffStr, 186, startY + 20, { align: "right" });
+
+    // Line 3: Unsettled Crops
+    doc.text("Unsettled Crops", 20, startY + 28);
+    doc.text(`Rs. ${summary.unsettledCropsTotal.toFixed(2)}`, 186, startY + 28, { align: "right" });
+
+    // Line 4: Divider Line 1
+    doc.setDrawColor(150);
+    doc.setLineWidth(0.5);
+    doc.line(20, startY + 34, 186, startY + 34);
+
+    // Line 5: FINAL AMOUNT
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("FINAL AMOUNT", 20, startY + 43);
+    const absFinal = Math.abs(summary.finalAmount);
+    doc.text(`Rs. ${absFinal.toFixed(2)}`, 186, startY + 43, { align: "right" });
+
+    // Line 6: Divider Line 2
+    doc.line(20, startY + 48, 186, startY + 48);
+
+    // Line 7: PAYABLE BY FARMER / PAYABLE TO FARMER
+    doc.setFontSize(12);
+    const isPayableByFarmer = summary.finalAmount >= 0;
+    const resultLabel = isPayableByFarmer
+      ? "PAYABLE BY FARMER"
+      : "PAYABLE TO FARMER";
+
+    if (isPayableByFarmer) {
+      doc.setTextColor(192, 57, 43); // Red
     } else {
-      doc.setTextColor(39, 174, 96);
-      doc.text(
-        `Amount Payable by Shop: Rs. ${Math.abs(summary.totalAmount).toFixed(2)}`,
-        18,
-        startY + 46
-      );
+      doc.setTextColor(39, 174, 96); // Green
     }
+    doc.text(resultLabel, 103, startY + 57, { align: "center" });
 
     return doc;
   };
@@ -224,12 +232,12 @@ export default function AnnualSettlementPage() {
     window.open(pdfBlobUrl, "_blank");
   };
 
-  const handleSaveSettlement = async () => {
+  const handleSettleAccount = async () => {
     if (!data) return;
     setSaving(true);
 
     try {
-      // Save to database
+      // Save settlement to database and generate bill
       const res = await fetch(
         `/api/annual-settlement/${searchId.toUpperCase()}`,
         {
@@ -238,15 +246,19 @@ export default function AnnualSettlementPage() {
           body: JSON.stringify({
             periodStart: data.periodStart,
             periodEnd: data.periodEnd,
-            totalPurchases: data.summary.totalPurchases,
-            totalCashTaken: data.summary.totalCashTaken,
-            totalCashGiven: data.summary.totalCashGiven,
+            status: "MANUALLY_SETTLED",
+            shopPurchasesTotal: data.summary.shopPurchasesTotal,
+            moneyTransactionDiff: data.summary.moneyTransactionDiff,
+            unsettledCropsTotal: data.summary.unsettledCropsTotal,
+            finalAmount: data.summary.finalAmount,
+            totalPurchasesPrincipal: data.summary.totalPurchasesPrincipal,
+            totalCashTakenPrincipal: data.summary.totalCashTakenPrincipal,
+            totalCashGivenPrincipal: data.summary.totalCashGivenPrincipal,
             totalCotton: data.summary.totalCotton,
             totalMirchi: data.summary.totalMirchi,
             principal: data.summary.principal,
             interestRate: data.summary.interestRate,
             interestAmount: data.summary.interestAmount,
-            totalAmount: data.summary.totalAmount,
           }),
         }
       );
@@ -256,88 +268,16 @@ export default function AnnualSettlementPage() {
         throw new Error(err.error || "Failed to save settlement");
       }
 
-      // Generate PDF and send email if farmer has email
-      try {
-        const doc = generatePDF();
-        if (doc && data.farmer.email) {
-          const pdfBase64 = doc.output("datauristring");
-          const html = `
-            <h2 style="color: #15803d;">Greetings From Sri Abhinaya Fertilizers</h2>
-            <p><strong>Customer Name:</strong> ${data.farmer.name}</p>
-            <p><strong>Customer ID:</strong> ${data.farmer.farmerNo}</p>
-            <p><strong>Phone:</strong> ${data.farmer.phone}</p>
-            <br/>
-            <h3>Annual Final Settlement Statement</h3>
-            <p><strong>Settlement Period:</strong> ${format(new Date(data.periodStart), "dd/MM/yyyy")} to ${format(new Date(data.periodEnd), "dd/MM/yyyy")}</p>
-            <br/>
-            <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-              <tr style="background-color: #15803d; color: white;">
-                <th>Category</th><th>Principal</th><th>Interest</th><th>Total</th>
-              </tr>
-              <tr>
-                <td>Purchases</td>
-                <td align="right">Rs. ${data.summary.totalPurchases.toFixed(2)}</td>
-                <td align="right">Rs. ${data.summary.totalPurchaseInterest.toFixed(2)}</td>
-                <td align="right">Rs. ${(data.summary.totalPurchases + data.summary.totalPurchaseInterest).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td>Cash Taken</td>
-                <td align="right">Rs. ${data.summary.totalCashTaken.toFixed(2)}</td>
-                <td align="right">Rs. ${data.summary.totalCashTakenInterest.toFixed(2)}</td>
-                <td align="right">Rs. ${(data.summary.totalCashTaken + data.summary.totalCashTakenInterest).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td>Cash Given</td>
-                <td align="right">- Rs. ${data.summary.totalCashGiven.toFixed(2)}</td>
-                <td align="right">- Rs. ${data.summary.totalCashGivenInterest.toFixed(2)}</td>
-                <td align="right">- Rs. ${(data.summary.totalCashGiven + data.summary.totalCashGivenInterest).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td>Cotton</td>
-                <td align="right">- Rs. ${data.summary.totalCotton.toFixed(2)}</td>
-                <td align="right">- Rs. ${data.summary.totalCottonInterest.toFixed(2)}</td>
-                <td align="right">- Rs. ${(data.summary.totalCotton + data.summary.totalCottonInterest).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td>Mirchi</td>
-                <td align="right">- Rs. ${data.summary.totalMirchi.toFixed(2)}</td>
-                <td align="right">- Rs. ${data.summary.totalMirchiInterest.toFixed(2)}</td>
-                <td align="right">- Rs. ${(data.summary.totalMirchi + data.summary.totalMirchiInterest).toFixed(2)}</td>
-              </tr>
-            </table>
-            <br/>
-            <p><strong>Outstanding Principal:</strong> Rs. ${data.summary.principal.toFixed(2)}</p>
-            <p><strong>Interest Rate:</strong> ${data.summary.interestRate}% per month</p>
-            <p><strong>Total Interest:</strong> Rs. ${data.summary.interestAmount.toFixed(2)}</p>
-            <h3><strong>Final Amount: Rs. ${data.summary.totalAmount.toFixed(2)}</strong></h3>
-            <p>${data.summary.totalAmount >= 0 ? "Amount payable by Farmer" : "Amount payable by Shop"}</p>
-            <br/>
-            <p>Please find your detailed settlement statement attached as a PDF.</p>
-          `;
-
-          await fetch("/api/email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: data.farmer.email,
-              subject: `Annual Settlement - ${format(new Date(data.periodStart), "yyyy")}/${format(new Date(data.periodEnd), "yyyy")}`,
-              html,
-              pdfBase64,
-              fileName: `Annual_Settlement_${data.farmer.farmerNo}_${format(new Date(data.periodEnd), "yyyy")}.pdf`,
-            }),
-          });
-        }
-      } catch (emailErr) {
-        console.error("Email sending failed:", emailErr);
-      }
-
       setSettled(true);
       setModalType("success");
-      setModalTitle("Settlement Saved");
+      setModalTitle("Account Settled Successfully");
       setModalMessage(
-        `Annual settlement for ${data.farmer.name} has been recorded successfully!${data.farmer.email ? " Email sent." : ""}`
+        `Final Annual Settlement for ${data.farmer.name} has been processed! Settlement status set to Manually Settled.`
       );
       setModalOpen(true);
+
+      // Open PDF automatically
+      handleExportPDF();
     } catch (err: any) {
       setModalType("error");
       setModalTitle("Settlement Failed");
@@ -358,11 +298,10 @@ export default function AnnualSettlementPage() {
         </div>
         <div>
           <h1 className="text-3xl font-bold text-green-950">
-            Annual Final Settlement
+            Final Year-End Settlement
           </h1>
           <p className="text-slate-500">
-            Calculate yearly settlement with interest and generate the final
-            statement.
+            Search farmer, calculate annual account with interest, and process settlement.
           </p>
         </div>
       </div>
@@ -399,7 +338,7 @@ export default function AnnualSettlementPage() {
               "Calculating..."
             ) : (
               <>
-                <Search className="w-4 h-4" /> Search
+                <Search className="w-4 h-4" /> Fetch Account
               </>
             )}
           </button>
@@ -418,11 +357,24 @@ export default function AnnualSettlementPage() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-800">
-                  {data.farmer.name}
-                </h2>
-                <p className="text-slate-500 text-sm">
-                  ID: {data.farmer.farmerNo} | Phone: {data.farmer.phone}
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-slate-800">
+                    {data.farmer.name}
+                  </h2>
+                  <span
+                    className={`text-xs px-3 py-1 rounded-full font-bold uppercase ${
+                      data.status === "MANUALLY_SETTLED"
+                        ? "bg-green-100 text-green-800"
+                        : data.status === "AUTOMATICALLY_SETTLED"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {data.status.replace("_", " ")}
+                  </span>
+                </div>
+                <p className="text-slate-500 text-sm mt-1">
+                  Farmer ID: <strong>{data.farmer.farmerNo}</strong> | Phone: {data.farmer.phone}
                 </p>
               </div>
               <div className="text-right">
@@ -435,167 +387,130 @@ export default function AnnualSettlementPage() {
             </div>
           </div>
 
-          {/* Summary Cards */}
+          {/* Breakdown Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="text-slate-500 font-medium mb-2 text-sm">
-                Outstanding Principal
+              <h3 className="text-slate-500 font-medium mb-1 text-sm">
+                Shop Purchases (With Interest)
               </h3>
               <p className="text-2xl font-bold text-slate-800">
-                ₹{s.principal.toFixed(2)}
+                ₹{s.shopPurchasesTotal.toFixed(2)}
               </p>
             </div>
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="text-slate-500 font-medium mb-2 text-sm flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-orange-500" /> Total
-                Interest ({s.interestRate}%/mo)
+              <h3 className="text-slate-500 font-medium mb-1 text-sm">
+                Money Transaction Diff
               </h3>
-              <p className="text-2xl font-bold text-orange-600">
-                ₹{s.interestAmount.toFixed(2)}
+              <p className="text-2xl font-bold text-indigo-600">
+                ₹{s.moneyTransactionDiff.toFixed(2)}
               </p>
             </div>
             <div
-              className={`p-5 rounded-xl border shadow-sm ${s.totalAmount >= 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}
+              className={`p-5 rounded-xl border shadow-sm ${
+                s.finalAmount >= 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+              }`}
             >
-              <h3 className="text-slate-500 font-medium mb-2 text-sm">
-                {s.totalAmount >= 0
-                  ? "Amount Payable by Farmer"
-                  : "Amount Payable by Shop"}
+              <h3 className="text-slate-500 font-medium mb-1 text-sm">
+                {s.finalAmount >= 0
+                  ? "FINAL AMOUNT (PAYABLE BY FARMER)"
+                  : "FINAL AMOUNT (PAYABLE TO FARMER)"}
               </h3>
               <p
-                className={`text-2xl font-bold ${s.totalAmount >= 0 ? "text-red-700" : "text-green-700"}`}
+                className={`text-2xl font-bold ${
+                  s.finalAmount >= 0 ? "text-red-700" : "text-green-700"
+                }`}
               >
-                ₹{Math.abs(s.totalAmount).toFixed(2)}
+                ₹{Math.abs(s.finalAmount).toFixed(2)}
               </p>
             </div>
           </div>
 
-          {/* Breakdown Table */}
+          {/* Detailed Account Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 font-semibold text-slate-800 flex justify-between">
+              <span>Account Breakdown</span>
+              <span className="text-xs text-slate-500 font-normal">
+                * Cotton & Mirchi have NO interest applied
+              </span>
+            </div>
             <table className="w-full text-sm">
               <thead className="bg-green-900 text-white">
                 <tr>
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-right">Principal (₹)</th>
                   <th className="px-4 py-3 text-right">Interest (₹)</th>
-                  <th className="px-4 py-3 text-right">Total (₹)</th>
+                  <th className="px-4 py-3 text-right">Subtotal (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 <tr className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium">
-                    Purchases (Pesticides + Fertilizers)
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {s.totalPurchases.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-orange-600">
-                    {s.totalPurchaseInterest.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">
-                    {(s.totalPurchases + s.totalPurchaseInterest).toFixed(2)}
-                  </td>
+                  <td className="px-4 py-3 font-medium">Shop Purchases</td>
+                  <td className="px-4 py-3 text-right">{s.totalPurchasesPrincipal.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-amber-600">{s.totalPurchaseInterest.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{s.shopPurchasesTotal.toFixed(2)}</td>
                 </tr>
                 <tr className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium">
-                    Cash Taken (Borrowed)
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {s.totalCashTaken.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-orange-600">
-                    {s.totalCashTakenInterest.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">
-                    {(s.totalCashTaken + s.totalCashTakenInterest).toFixed(2)}
-                  </td>
+                  <td className="px-4 py-3 font-medium">Money Taken (Borrowed)</td>
+                  <td className="px-4 py-3 text-right">{s.totalCashTakenPrincipal.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-amber-600">{s.totalCashTakenInterest.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{s.cashTakenTotal.toFixed(2)}</td>
                 </tr>
                 <tr className="hover:bg-green-50/50">
-                  <td className="px-4 py-3 font-medium text-green-700">
-                    Cash Given (Repaid)
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-700">
-                    - {s.totalCashGiven.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600">
-                    - {s.totalCashGivenInterest.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-green-700">
-                    -{" "}
-                    {(s.totalCashGiven + s.totalCashGivenInterest).toFixed(2)}
-                  </td>
+                  <td className="px-4 py-3 font-medium text-green-700">Money Given (Repaid)</td>
+                  <td className="px-4 py-3 text-right text-green-700">- {s.totalCashGivenPrincipal.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-green-600">- {s.totalCashGivenInterest.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-medium text-green-700">- {s.cashGivenTotal.toFixed(2)}</td>
                 </tr>
                 <tr className="hover:bg-green-50/50">
-                  <td className="px-4 py-3 font-medium text-green-700">
-                    Cotton Transactions
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-700">
-                    - {s.totalCotton.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600">
-                    - {s.totalCottonInterest.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-green-700">
-                    - {(s.totalCotton + s.totalCottonInterest).toFixed(2)}
-                  </td>
+                  <td className="px-4 py-3 font-medium text-green-700">Cotton Transactions (No Interest)</td>
+                  <td className="px-4 py-3 text-right text-green-700">- {s.totalCotton.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-slate-400">0.00</td>
+                  <td className="px-4 py-3 text-right font-medium text-green-700">- {s.totalCotton.toFixed(2)}</td>
                 </tr>
                 <tr className="hover:bg-green-50/50">
-                  <td className="px-4 py-3 font-medium text-green-700">
-                    Mirchi Transactions
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-700">
-                    - {s.totalMirchi.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600">
-                    - {s.totalMirchiInterest.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-green-700">
-                    - {(s.totalMirchi + s.totalMirchiInterest).toFixed(2)}
-                  </td>
+                  <td className="px-4 py-3 font-medium text-green-700">Mirchi Transactions (No Interest)</td>
+                  <td className="px-4 py-3 text-right text-green-700">- {s.totalMirchi.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-slate-400">0.00</td>
+                  <td className="px-4 py-3 text-right font-medium text-green-700">- {s.totalMirchi.toFixed(2)}</td>
                 </tr>
               </tbody>
               <tfoot>
-                <tr className="bg-slate-100 font-bold text-slate-800">
-                  <td className="px-4 py-3">FINAL TOTAL</td>
-                  <td className="px-4 py-3 text-right">
-                    {s.principal.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-orange-600">
-                    {s.interestAmount.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-lg">
-                    {s.totalAmount >= 0 ? "" : "- "}₹
-                    {Math.abs(s.totalAmount).toFixed(2)}
+                <tr className="bg-slate-100 font-bold text-slate-800 border-t border-slate-300">
+                  <td className="px-4 py-3">FINAL NET AMOUNT</td>
+                  <td className="px-4 py-3 text-right">{s.principal.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-amber-600">{s.interestAmount.toFixed(2)}</td>
+                  <td className={`px-4 py-3 text-right text-lg ${s.finalAmount >= 0 ? "text-red-700" : "text-green-700"}`}>
+                    ₹{Math.abs(s.finalAmount).toFixed(2)}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {/* Past Settlements */}
-          {data.pastSettlements && data.pastSettlements.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-              <h3 className="font-bold text-slate-800 mb-3">
-                Previous Annual Settlements
-              </h3>
-              <ul className="space-y-2">
-                {data.pastSettlements.map((ps: any) => (
-                  <li
-                    key={ps.id}
-                    className="flex justify-between items-center bg-slate-50 border border-slate-100 p-3 rounded-lg text-sm"
-                  >
-                    <span className="text-slate-600">
-                      {format(new Date(ps.periodStart), "dd/MM/yyyy")} →{" "}
-                      {format(new Date(ps.periodEnd), "dd/MM/yyyy")}
-                    </span>
-                    <span className="font-bold text-slate-800">
-                      ₹{ps.totalAmount.toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+          {/* Bottom Calculation Box Preview */}
+          <div className="bg-slate-50 border border-slate-300 rounded-xl p-6 font-mono text-sm space-y-2 max-w-lg mx-auto shadow-inner">
+            <div className="flex justify-between font-bold text-slate-700">
+              <span>Shop Purchases</span>
+              <span>₹{s.shopPurchasesTotal.toFixed(2)}</span>
             </div>
-          )}
+            <div className="flex justify-between font-bold text-slate-700">
+              <span>Money Transaction Difference</span>
+              <span>₹{s.moneyTransactionDiff.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-slate-700">
+              <span>Unsettled Crops</span>
+              <span>₹{s.unsettledCropsTotal.toFixed(2)}</span>
+            </div>
+            <hr className="border-slate-400 my-2" />
+            <div className="flex justify-between text-base font-black text-slate-900">
+              <span>FINAL AMOUNT</span>
+              <span>₹{Math.abs(s.finalAmount).toFixed(2)}</span>
+            </div>
+            <hr className="border-slate-400 my-2" />
+            <div className={`text-center font-black text-base ${s.finalAmount >= 0 ? "text-red-600" : "text-green-600"}`}>
+              {s.finalAmount >= 0 ? "PAYABLE BY FARMER" : "PAYABLE TO FARMER"}
+            </div>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex flex-col md:flex-row gap-4">
@@ -603,22 +518,23 @@ export default function AnnualSettlementPage() {
               onClick={handleExportPDF}
               className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-green-950 text-white px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md"
             >
-              <Download className="w-5 h-5" /> Download PDF
+              <Download className="w-5 h-5" /> Download Final PDF
             </button>
+
             <button
-              onClick={handleSaveSettlement}
+              onClick={handleSettleAccount}
               disabled={saving || settled}
-              className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-md disabled:opacity-50"
             >
               {settled ? (
                 <>
-                  <CheckCircle2 className="w-5 h-5" /> Settlement Saved
+                  <CheckCircle2 className="w-5 h-5" /> Account Settled
                 </>
               ) : saving ? (
-                "Saving..."
+                "Processing..."
               ) : (
                 <>
-                  <Send className="w-5 h-5" /> Save & Send Settlement
+                  <ShieldCheck className="w-5 h-5" /> Settle Account
                 </>
               )}
             </button>

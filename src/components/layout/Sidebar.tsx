@@ -10,6 +10,7 @@ import {
   Banknote, 
   Sprout, 
   Calculator,
+  FileText,
   LogOut,
   Menu,
   X
@@ -25,6 +26,7 @@ const navItems = [
   { name: "Cash Section", href: "/cash", icon: Banknote },
   { name: "Cotton & Mirchi", href: "/crops", icon: Sprout },
   { name: "Total Final", href: "/total", icon: Calculator },
+  { name: "Annual Settlement", href: "/annual-settlement", icon: FileText },
 ];
 
 export function Sidebar({ shopName }: { shopName?: string | null }) {

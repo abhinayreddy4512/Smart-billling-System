@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ShieldCheck,
+  Calendar,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -17,6 +18,9 @@ import { AlertModal } from "@/components/ui/AlertModal";
 
 export default function AnnualSettlementPage() {
   const [searchId, setSearchId] = useState("");
+  const [settlementDate, setSettlementDate] = useState(() =>
+    new Date().toISOString().split("T")[0]
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -29,9 +33,8 @@ export default function AnnualSettlementPage() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMessage, setModalMessage] = useState("");
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchId) return;
+  const fetchSettlement = async (id: string, date: string) => {
+    if (!id) return;
     setLoading(true);
     setError("");
     setData(null);
@@ -39,7 +42,7 @@ export default function AnnualSettlementPage() {
 
     try {
       const res = await fetch(
-        `/api/annual-settlement/${searchId.toUpperCase()}`
+        `/api/annual-settlement/${id.toUpperCase()}?settlementDate=${date}`
       );
       if (!res.ok) {
         const err = await res.json();
@@ -54,6 +57,19 @@ export default function AnnualSettlementPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchId) return;
+    await fetchSettlement(searchId, settlementDate);
+  };
+
+  const handleDateChange = async (newDate: string) => {
+    setSettlementDate(newDate);
+    if (searchId) {
+      await fetchSettlement(searchId, newDate);
     }
   };
 
@@ -94,7 +110,7 @@ export default function AnnualSettlementPage() {
     doc.text(`Farmer ID: ${farmer.farmerNo}`, 14, 63);
     doc.text(`Phone: ${farmer.phone}`, 14, 69);
 
-    // Settlement Period
+    // Settlement Period & Manual Date
     doc.setFont("helvetica", "bold");
     doc.text("Settlement Period", 120, 50);
     doc.setFont("helvetica", "normal");
@@ -104,7 +120,7 @@ export default function AnnualSettlementPage() {
       57
     );
     doc.text(
-      `Settlement Date: ${format(new Date(periodEnd), "dd/MM/yyyy")}`,
+      `Manual Settlement Date: ${format(new Date(settlementDate), "dd/MM/yyyy")}`,
       120,
       63
     );
@@ -196,7 +212,7 @@ export default function AnnualSettlementPage() {
       startY = (doc as any).lastAutoTable.finalY + 15;
     }
 
-    // ---- Exact Layout Calculation Box as requested ----
+    // ---- Bottom Calculation Box ----
     if (startY > 210) {
       doc.addPage();
       startY = 20;
@@ -267,7 +283,7 @@ export default function AnnualSettlementPage() {
     setSaving(true);
 
     try {
-      // Save settlement to database and generate bill
+      // Save settlement to database and generate bill till manual settlement date
       const res = await fetch(
         `/api/annual-settlement/${searchId.toUpperCase()}`,
         {
@@ -276,6 +292,7 @@ export default function AnnualSettlementPage() {
           body: JSON.stringify({
             periodStart: data.periodStart,
             periodEnd: data.periodEnd,
+            settlementDate: settlementDate,
             status: "MANUALLY_SETTLED",
             shopPurchasesTotal: data.summary.shopPurchasesTotal,
             moneyTransactionDiff: data.summary.moneyTransactionDiff,
@@ -302,7 +319,7 @@ export default function AnnualSettlementPage() {
       setModalType("success");
       setModalTitle("Account Settled Successfully");
       setModalMessage(
-        `Final Annual Settlement for ${data.farmer.name} has been processed! Settlement status set to Manually Settled.`
+        `Final Annual Settlement for ${data.farmer.name} has been processed up to ${format(new Date(settlementDate), "dd/MM/yyyy")}!`
       );
       setModalOpen(true);
 
@@ -331,7 +348,7 @@ export default function AnnualSettlementPage() {
             Final Year-End Settlement
           </h1>
           <p className="text-slate-500">
-            Search farmer, calculate annual account with interest, and process settlement.
+            Search farmer, select manual settlement date, calculate interest till settlement date, and process settlement.
           </p>
         </div>
       </div>
@@ -344,12 +361,12 @@ export default function AnnualSettlementPage() {
         onClose={() => setModalOpen(false)}
       />
 
-      {/* Search Section */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
-        <form onSubmit={handleSearch} className="flex gap-4 items-end">
-          <div className="flex-1 space-y-2">
+      {/* Search & Settlement Date Controls */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8 space-y-4">
+        <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="space-y-2">
             <label className="block text-sm font-medium text-slate-700">
-              Enter Farmer ID
+              Farmer ID
             </label>
             <input
               type="text"
@@ -359,16 +376,29 @@ export default function AnnualSettlementPage() {
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase"
             />
           </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-700 flex items-center gap-1">
+              <Calendar className="w-4 h-4 text-indigo-600" /> Manual Settlement Date
+            </label>
+            <input
+              type="date"
+              value={settlementDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 h-[42px] rounded-lg font-medium transition-all disabled:opacity-70"
+            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 h-[42px] rounded-lg font-medium transition-all disabled:opacity-70"
           >
             {loading ? (
               "Calculating..."
             ) : (
               <>
-                <Search className="w-4 h-4" /> Fetch Account
+                <Search className="w-4 h-4" /> Calculate Account
               </>
             )}
           </button>
@@ -408,10 +438,12 @@ export default function AnnualSettlementPage() {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-slate-500">Settlement Period</p>
-                <p className="font-medium text-slate-700">
-                  {format(new Date(data.periodStart), "dd/MM/yyyy")} →{" "}
-                  {format(new Date(data.periodEnd), "dd/MM/yyyy")}
+                <p className="text-sm text-slate-500">Interest Calculation Reference Date</p>
+                <p className="font-bold text-indigo-700 text-lg">
+                  {format(new Date(data.settlementDate || settlementDate), "dd/MM/yyyy")}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Cycle: {format(new Date(data.periodStart), "dd/MM/yyyy")} → {format(new Date(data.periodEnd), "dd/MM/yyyy")}
                 </p>
               </div>
             </div>
@@ -460,7 +492,7 @@ export default function AnnualSettlementPage() {
             <div className="p-4 bg-slate-50 border-b border-slate-200 font-semibold text-slate-800 flex justify-between">
               <span>Account Breakdown</span>
               <span className="text-xs text-slate-500 font-normal">
-                * Cotton & Mirchi have NO interest applied
+                * Interest calculated till {format(new Date(data.settlementDate || settlementDate), "dd/MM/yyyy")} (Crops: No interest)
               </span>
             </div>
             <table className="w-full text-sm">

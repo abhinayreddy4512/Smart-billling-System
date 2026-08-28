@@ -16,7 +16,6 @@ function computeSettlementPeriod(firstBillDate: Date) {
   const start = new Date(firstBillDate);
   let endYear = start.getFullYear();
 
-  // If first transaction is on or after May 1, settlement period ends May 1 of NEXT year
   const may1SameYear = new Date(endYear, 4, 1); // 4 = May (0-indexed)
   if (start >= may1SameYear) {
     endYear += 1;
@@ -37,6 +36,9 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const shopInfo = session.user;
+
+    const { searchParams } = new URL(request.url);
+    const customSettlementDateStr = searchParams.get("settlementDate");
 
     const farmer = await prisma.farmer.findUnique({
       where: {
@@ -73,25 +75,30 @@ export async function GET(
 
     allDates.sort((a, b) => a.getTime() - b.getTime());
     const firstDate = allDates[0];
-    const { start: periodStart, end: periodEnd } = computeSettlementPeriod(firstDate);
+    const { start: periodStart, end: autoPeriodEnd } = computeSettlementPeriod(firstDate);
 
-    // Reference date for interest calculation is periodEnd
-    const referenceDate = periodEnd;
+    // Reference date for interest calculation:
+    // Uses custom selected manual settlement date if provided, otherwise autoPeriodEnd
+    const manualSettlementDate = customSettlementDateStr
+      ? new Date(customSettlementDateStr)
+      : new Date();
 
-    // Filter transactions within the settlement period
+    const referenceDate = manualSettlementDate;
+
+    // Filter transactions within the settlement period (up to manual settlement date)
     const billsInPeriod = farmer.bills.filter(
-      (b) => new Date(b.date) >= periodStart && new Date(b.date) <= periodEnd
+      (b) => new Date(b.date) >= periodStart && new Date(b.date) <= referenceDate
     );
 
     const cashInPeriod = farmer.cashTransactions.filter(
-      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= periodEnd
+      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= referenceDate
     );
 
     const cropsInPeriod = farmer.cropLogs.filter(
-      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= periodEnd
+      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= referenceDate
     );
 
-    // 1. Process Purchases (Fertilizers & Pesticides) - Accrues Interest
+    // 1. Process Purchases (Fertilizers & Pesticides) - Accrues Interest till manual settlement date
     let totalPurchasesPrincipal = 0;
     let totalPurchaseInterest = 0;
 
@@ -106,7 +113,7 @@ export async function GET(
 
     const shopPurchasesTotal = totalPurchasesPrincipal + totalPurchaseInterest;
 
-    // 2. Process Cash Transactions - Accrues Interest
+    // 2. Process Cash Transactions - Accrues Interest till manual settlement date
     let totalCashTakenPrincipal = 0;
     let totalCashTakenInterest = 0;
     let totalCashGivenPrincipal = 0;
@@ -137,7 +144,6 @@ export async function GET(
 
     const processedCrops = cropsInPeriod.map((log) => {
       const amount = (log.totalWeight / 100) * (log.price || 0);
-      // NO INTEREST for cotton and mirchi!
       const interest = 0;
 
       if (log.cropType === "COTTON") {
@@ -157,21 +163,20 @@ export async function GET(
 
     const unsettledCropsTotal = totalCotton + totalMirchi;
 
-    // 4. Final Amount Calculation:
-    // Shop Purchases + Money Transaction Difference - Unsettled Crops
+    // 4. Final Amount Calculation
     const finalAmount = shopPurchasesTotal + moneyTransactionDiff - unsettledCropsTotal;
 
     // Determine current settlement status
     const existingSettlement = farmer.annualSettlements.find(
       (s) =>
-        new Date(s.periodEnd).getFullYear() === periodEnd.getFullYear()
+        new Date(s.periodEnd).getFullYear() === autoPeriodEnd.getFullYear()
     );
 
     const now = new Date();
     let currentStatus = "PENDING";
     if (existingSettlement) {
       currentStatus = existingSettlement.status;
-    } else if (now >= periodEnd) {
+    } else if (now >= autoPeriodEnd) {
       currentStatus = "AUTOMATICALLY_SETTLED";
     }
 
@@ -185,7 +190,8 @@ export async function GET(
         email: farmer.email,
       },
       periodStart: periodStart.toISOString(),
-      periodEnd: periodEnd.toISOString(),
+      periodEnd: autoPeriodEnd.toISOString(),
+      settlementDate: referenceDate.toISOString(),
       status: currentStatus,
       isAlreadySettled: !!existingSettlement,
       processedBills,
@@ -236,6 +242,7 @@ export async function POST(
     const {
       periodStart,
       periodEnd,
+      settlementDate,
       status = "MANUALLY_SETTLED",
       shopPurchasesTotal,
       moneyTransactionDiff,
@@ -264,7 +271,9 @@ export async function POST(
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
-    // Check if duplicate settlement exists
+    const actualSettlementDate = settlementDate ? new Date(settlementDate) : new Date();
+
+    // Check if duplicate settlement exists for this exact period
     const existing = await prisma.annualSettlement.findFirst({
       where: {
         farmerId: farmer.id,
@@ -282,12 +291,9 @@ export async function POST(
     // Automatic Bill / Cash Transaction Generation on Settlement
     let generatedReceiptNo = null;
     if (Math.abs(finalAmount) > 0.01) {
-      // If finalAmount > 0: Farmer owes money to shop -> Record as TAKEN
-      // If finalAmount < 0: Shop owes money to farmer -> Record as GIVEN
       const transactionType = finalAmount > 0 ? "TAKEN" : "GIVEN";
       const absAmount = Math.abs(finalAmount);
 
-      // Find highest receiptNo
       const lastCash = await prisma.cashTransaction.findFirst({
         where: { farmerId: farmer.id },
         orderBy: { receiptNo: "desc" },
@@ -300,7 +306,7 @@ export async function POST(
           farmerId: farmer.id,
           type: transactionType,
           amount: absAmount,
-          date: new Date(periodEnd),
+          date: actualSettlementDate,
           photoProof: null,
         },
       });
@@ -311,7 +317,7 @@ export async function POST(
       data: {
         farmerId: farmer.id,
         periodStart: new Date(periodStart),
-        periodEnd: new Date(periodEnd),
+        periodEnd: actualSettlementDate,
         status,
         totalPurchases: totalPurchasesPrincipal || 0,
         totalCashTaken: totalCashTakenPrincipal || 0,

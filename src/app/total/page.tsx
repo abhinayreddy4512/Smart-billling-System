@@ -79,6 +79,7 @@ export default function TotalFinalPage() {
     const cashTaken = processedCash.filter((c: any) => c.type === "TAKEN");
     const cashGiven = processedCash.filter((c: any) => c.type === "GIVEN");
     const unsettledCrops = processedCrops.filter((c: any) => !c.isSettled);
+    const settledCrops = processedCrops.filter((c: any) => c.isSettled);
 
     const sumFinal = (arr: any[]) => arr.reduce((acc, item) => acc + item.finalAmount, 0);
 
@@ -97,6 +98,12 @@ export default function TotalFinalPage() {
     // Helper for tables
     const renderTable = (title: string, items: any[], headColor: number[]) => {
       if (items.length === 0) return;
+      
+      if (startY > 230) {
+        doc.addPage();
+        startY = 20;
+      }
+
       doc.setFontSize(12);
       doc.setTextColor(40);
       doc.setFont("helvetica", "bold");
@@ -107,8 +114,8 @@ export default function TotalFinalPage() {
         format(new Date(i.date), "dd/MM/yyyy"),
         i.product || i.cropType || i.type,
         `Rs ${(i.total || i.amount).toFixed(2)}`,
-        `Rs ${i.interest.toFixed(2)}`,
-        `Rs ${i.finalAmount.toFixed(2)}`
+        `Rs ${(i.interest || 0).toFixed(2)}`,
+        `Rs ${(i.finalAmount || i.amount).toFixed(2)}`
       ]);
 
       autoTable(doc, {
@@ -124,9 +131,41 @@ export default function TotalFinalPage() {
 
     renderTable("Pesticides (Purchases)", pesticides, [192, 57, 43]);
     renderTable("Fertilizers (Purchases)", fertilizers, [41, 128, 185]);
-    renderTable("Cash Taken (Loans)", cashTaken, [211, 84, 0]);
-    renderTable("Cash Given (Repayments)", cashGiven, [39, 174, 96]);
-    renderTable("Unsettled Crops (NO Interest)", unsettledCrops, [39, 174, 96]);
+    renderTable("Money Taken (Loans/Borrowed)", cashTaken, [211, 84, 0]);
+    renderTable("Money Given (Repayments)", cashGiven, [39, 174, 96]);
+    renderTable("Unsettled Crops (Cotton & Mirchi - No Interest)", unsettledCrops, [39, 174, 96]);
+
+    // Render Settled Crops Details if any
+    if (settledCrops.length > 0) {
+      if (startY > 230) {
+        doc.addPage();
+        startY = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setTextColor(40);
+      doc.setFont("helvetica", "bold");
+      doc.text("Settled Crops (Already Paid)", 14, startY - 2);
+      
+      const rows = settledCrops.map((c: any) => [
+        c.logNo || "-",
+        format(new Date(c.date), "dd/MM/yyyy"),
+        c.cropType,
+        `Rs ${c.amount.toFixed(2)}`,
+        "Settled",
+        `Rs ${c.amount.toFixed(2)}`
+      ]);
+
+      autoTable(doc, {
+        startY,
+        head: [["Log ID", "Date", "Crop Type", "Amount", "Status", "Total Settled"]],
+        body: rows,
+        theme: "grid",
+        headStyles: { fillColor: [149, 165, 166] },
+        margin: { top: 10 }
+      });
+      startY = (doc as any).lastAutoTable.finalY + 15;
+    }
 
     // Bottom calculation box
     if (startY > 210) {

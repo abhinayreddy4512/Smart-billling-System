@@ -52,42 +52,31 @@ export async function POST(
     const actualSettlementDate = settlementDate ? new Date(settlementDate) : new Date();
     const absAmount = Math.abs(finalAmount);
 
-    // If the balance is effectively zero, nothing to record
-    const hasBalance = absAmount > 0.01;
-
     let generatedReceiptNo: number | null = null;
     let carryForwardReceiptNo: number | null = null;
 
     if (decision === "PAID") {
-      // Record a payment transaction on the settlement date to clear the balance
-      if (hasBalance) {
-        // If farmer owed admin (positive): farmer GIVES money → GIVEN
-        // If admin owed farmer (negative): admin GIVES money → GIVEN (from admin's perspective this is GIVEN, i.e., farmer received)
-        const transactionType = finalAmount > 0 ? "GIVEN" : "TAKEN";
-        // finalAmount > 0: farmer pays admin → admin records as receiving (GIVEN by farmer = GIVEN)
-        // finalAmount < 0: admin pays farmer → admin records as giving out (admin gives = GIVEN)
-        // Actually: TAKEN = money taken from farmer / borrowed by farmer; GIVEN = money given to farmer
-        // Payment by farmer reduces debt: GIVEN (shop receives from farmer, cancels the debt)
-        const paymentType = finalAmount > 0 ? "GIVEN" : "TAKEN";
+      // Record payment transaction / zero-value documentary receipt on settlement date
+      const paymentType = finalAmount > 0 ? "GIVEN" : "TAKEN";
 
-        const lastCash = await prisma.cashTransaction.findFirst({
-          where: { farmerId: farmer.id },
-          orderBy: { receiptNo: "desc" },
-        });
-        generatedReceiptNo = (lastCash?.receiptNo || 0) + 1;
+      const lastCash = await prisma.cashTransaction.findFirst({
+        where: { farmerId: farmer.id },
+        orderBy: { receiptNo: "desc" },
+      });
+      generatedReceiptNo = (lastCash?.receiptNo || 0) + 1;
 
-        await prisma.cashTransaction.create({
-          data: {
-            receiptNo: generatedReceiptNo,
-            farmerId: farmer.id,
-            type: paymentType,
-            amount: absAmount,
-            date: actualSettlementDate,
-            note: `Annual Settlement Payment — ${academicYear}`,
-            photoProof: null,
-          },
-        });
-      }
+      // Always create a receipt record (with zero amount if fully settled or actual payment amount)
+      await prisma.cashTransaction.create({
+        data: {
+          receiptNo: generatedReceiptNo,
+          farmerId: farmer.id,
+          type: paymentType,
+          amount: absAmount,
+          date: actualSettlementDate,
+          note: `Annual Settlement Payment — ${academicYear} (Paid in Full) [Ref: ${settlementId}]`,
+          photoProof: null,
+        },
+      });
 
       // Update settlement record
       await prisma.annualSettlement.update({
@@ -101,43 +90,38 @@ export async function POST(
       return NextResponse.json({
         success: true,
         action: "PAID",
-        message: hasBalance
+        message: absAmount > 0.01
           ? `Payment of ₹${absAmount.toFixed(2)} recorded. Account settled for ${academicYear}.`
-          : `Account settled with zero balance for ${academicYear}.`,
+          : `Account settled with zero balance for ${academicYear}. Zero-value receipt created.`,
         receiptNo: generatedReceiptNo,
       });
     } else if (decision === "CARRY_FORWARD") {
       // Create an opening balance transaction on 1 June of the NEXT academic year
-      // Parse academic year e.g. "2025-26" → next year start = 1 Jun 2026
       const [startYearStr] = (academicYear || "").split("-");
       const startYear = parseInt(startYearStr, 10);
       const nextYearStartDate = isNaN(startYear)
-        ? new Date(actualSettlementDate.getFullYear() + 1, 5, 1) // fallback
+        ? new Date(actualSettlementDate.getFullYear() + 1, 5, 1)
         : new Date(startYear + 1, 5, 1); // 1 June of next year
 
-      if (hasBalance) {
-        // finalAmount > 0: farmer still owes admin → opening balance is TAKEN (farmer borrowed)
-        // finalAmount < 0: admin still owes farmer → opening balance is GIVEN (admin gave credit)
-        const carryType = finalAmount > 0 ? "TAKEN" : "GIVEN";
+      const carryType = finalAmount > 0 ? "TAKEN" : "GIVEN";
 
-        const lastCash = await prisma.cashTransaction.findFirst({
-          where: { farmerId: farmer.id },
-          orderBy: { receiptNo: "desc" },
-        });
-        carryForwardReceiptNo = (lastCash?.receiptNo || 0) + 1;
+      const lastCash = await prisma.cashTransaction.findFirst({
+        where: { farmerId: farmer.id },
+        orderBy: { receiptNo: "desc" },
+      });
+      carryForwardReceiptNo = (lastCash?.receiptNo || 0) + 1;
 
-        await prisma.cashTransaction.create({
-          data: {
-            receiptNo: carryForwardReceiptNo,
-            farmerId: farmer.id,
-            type: carryType,
-            amount: absAmount,
-            date: nextYearStartDate,
-            note: `Carry Forward from ${academicYear}`,
-            photoProof: null,
-          },
-        });
-      }
+      await prisma.cashTransaction.create({
+        data: {
+          receiptNo: carryForwardReceiptNo,
+          farmerId: farmer.id,
+          type: carryType,
+          amount: absAmount,
+          date: nextYearStartDate,
+          note: `Previous Year Carry Forward (${academicYear}) [Ref: ${settlementId}]`,
+          photoProof: null,
+        },
+      });
 
       // Update settlement record
       await prisma.annualSettlement.update({
@@ -151,9 +135,7 @@ export async function POST(
       return NextResponse.json({
         success: true,
         action: "CARRY_FORWARD",
-        message: hasBalance
-          ? `₹${absAmount.toFixed(2)} carried forward to next year (${startYear + 1}-${String(startYear + 2).slice(2)}) as opening balance from ${nextYearStartDate.toLocaleDateString("en-IN")}.`
-          : `Account settled with zero balance. Nothing to carry forward.`,
+        message: `₹${absAmount.toFixed(2)} carried forward to next year (${startYear + 1}-${String(startYear + 2).slice(2)}) as opening balance from 01-Jun-${startYear + 1}.`,
         receiptNo: carryForwardReceiptNo,
         nextYearStartDate: nextYearStartDate.toISOString(),
       });

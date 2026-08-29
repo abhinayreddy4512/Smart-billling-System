@@ -81,6 +81,7 @@ model CashTransaction {
   type       String   // 'TAKEN' or 'GIVEN'
   amount     Float
   photoProof String?  @db.Text
+  note       String?  // e.g. 'Annual Settlement Payment', 'Carry Forward from 2025-26'
   date       DateTime @default(now())
 }
 
@@ -112,7 +113,9 @@ model AnnualSettlement {
   farmer             Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   periodStart        DateTime
   periodEnd          DateTime
+  academicYear       String   @default("") // e.g. "2025-26"
   status             String   @default("MANUALLY_SETTLED") // "MANUALLY_SETTLED" | "AUTOMATICALLY_SETTLED"
+  paymentStatus      String   @default("PENDING_DECISION") // "PENDING_DECISION" | "PAID" | "CARRIED_FORWARD"
   totalPurchases     Float    @default(0)
   totalCashTaken     Float    @default(0)
   totalCashGiven     Float    @default(0)
@@ -126,5 +129,6 @@ model AnnualSettlement {
   interestAmount     Float    @default(0)
   totalAmount        Float    @default(0)
   generatedReceiptNo Int?
+  carryForwardReceiptNo Int?
   createdAt          DateTime @default(now())
 }

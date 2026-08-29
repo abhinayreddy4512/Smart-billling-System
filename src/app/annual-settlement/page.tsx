@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   FileText,
   Search,
@@ -13,16 +13,27 @@ import {
   ArrowRightLeft,
   ChevronDown,
   ChevronUp,
+  LayoutDashboard,
+  UserCheck,
+  UserX,
+  Users,
+  Lock,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { AlertModal } from "@/components/ui/AlertModal";
+import { getAcademicYearFromDate, getAcademicYearOptions } from "@/lib/academicYear";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+type TabMode = "SETTLEMENT" | "OVERVIEW";
 type DecisionState = "NONE" | "CHOOSING" | "DECIDED";
 
 export default function AnnualSettlementPage() {
+  const [activeTab, setActiveTab] = useState<TabMode>("SETTLEMENT");
+  const [academicYear, setAcademicYear] = useState(() => getAcademicYearFromDate());
+  const yearOptions = getAcademicYearOptions();
+
+  // Search & Calculator state
   const [searchId, setSearchId] = useState("");
   const [settlementDate, setSettlementDate] = useState(
     () => new Date().toISOString().split("T")[0]
@@ -31,20 +42,26 @@ export default function AnnualSettlementPage() {
   const [error, setError] = useState("");
   const [data, setData] = useState<any>(null);
 
-  // Settlement save state
+  // Settlement decision state
   const [settling, setSettling] = useState(false);
   const [settlementId, setSettlementId] = useState<string | null>(null);
   const [decisionState, setDecisionState] = useState<DecisionState>("NONE");
   const [decisionResult, setDecisionResult] = useState<string>("");
 
-  // Expand/collapse sections
+  // Overview Dashboard state
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewData, setOverviewData] = useState<any>(null);
+  const [overviewFilter, setOverviewFilter] = useState<"ALL" | "SETTLED" | "UNSETTLED">("ALL");
+  const [overviewSearch, setOverviewSearch] = useState("");
+
+  // Section collapse state
   const [expandedSections, setExpandedSections] = useState({
     pesticides: true,
     fertilizers: true,
     unsettledCrops: true,
     settledCrops: false,
     moneyTaken: true,
-    moneyGiven: true,
+    loanRepayments: true,
   });
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,8 +73,30 @@ export default function AnnualSettlementPage() {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // ─── Fetch / Recalculate ────────────────────────────────────────────────
-  const fetchSettlement = async (farmerId: string, date: string) => {
+  // ─── Fetch Overview ──────────────────────────────────────────────────────
+  const fetchOverview = async (ay: string) => {
+    setOverviewLoading(true);
+    try {
+      const res = await fetch(`/api/annual-settlement/overview?academicYear=${ay}`);
+      if (res.ok) {
+        const result = await res.json();
+        setOverviewData(result);
+      }
+    } catch (err) {
+      console.error("Error fetching overview:", err);
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "OVERVIEW") {
+      fetchOverview(academicYear);
+    }
+  }, [activeTab, academicYear]);
+
+  // ─── Fetch Farmer Settlement ─────────────────────────────────────────────
+  const fetchSettlement = async (farmerId: string, ay: string, date: string) => {
     if (!farmerId) return;
     setLoading(true);
     setError("");
@@ -68,7 +107,7 @@ export default function AnnualSettlementPage() {
 
     try {
       const res = await fetch(
-        `/api/annual-settlement/${farmerId.toUpperCase()}?settlementDate=${date}`
+        `/api/annual-settlement/${farmerId.toUpperCase()}?academicYear=${ay}&settlementDate=${date}`
       );
       if (!res.ok) {
         const err = await res.json();
@@ -77,7 +116,6 @@ export default function AnnualSettlementPage() {
       const result = await res.json();
       setData(result);
 
-      // If already settled, set the existing settlement ID and decision state
       if (result.isAlreadySettled) {
         setSettlementId(result.existingSettlementId);
         setDecisionState(
@@ -93,17 +131,31 @@ export default function AnnualSettlementPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchSettlement(searchId, settlementDate);
+    fetchSettlement(searchId, academicYear, settlementDate);
+  };
+
+  const handleYearChange = (newAY: string) => {
+    setAcademicYear(newAY);
+    if (searchId && activeTab === "SETTLEMENT") {
+      fetchSettlement(searchId, newAY, settlementDate);
+    }
   };
 
   const handleDateChange = (newDate: string) => {
     setSettlementDate(newDate);
-    if (searchId && data) {
-      fetchSettlement(searchId, newDate);
+    if (searchId && activeTab === "SETTLEMENT") {
+      fetchSettlement(searchId, academicYear, newDate);
     }
   };
 
-  // ─── Step 1: Settle Account (records to DB, awaits decision) ───────────
+  // Jump from overview row to farmer settlement
+  const handleSelectFarmerFromOverview = (farmerNo: string) => {
+    setSearchId(farmerNo);
+    setActiveTab("SETTLEMENT");
+    fetchSettlement(farmerNo, academicYear, settlementDate);
+  };
+
+  // ─── Step 1: Record Settlement ───────────────────────────────────────────
   const handleSettleAccount = async () => {
     if (!data) return;
     setSettling(true);
@@ -112,7 +164,7 @@ export default function AnnualSettlementPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          academicYear: data.academicYear,
+          academicYear,
           periodStart: data.periodStart,
           periodEnd: data.periodEnd,
           settlementDate,
@@ -137,7 +189,7 @@ export default function AnnualSettlementPage() {
     }
   };
 
-  // ─── Step 2: Paid / Carry Forward decision ──────────────────────────────
+  // ─── Step 2: Paid / Carry Forward Decision ─────────────────────────────
   const handleDecision = async (decision: "PAID" | "CARRY_FORWARD") => {
     if (!settlementId || !data) return;
     setSettling(true);
@@ -152,7 +204,7 @@ export default function AnnualSettlementPage() {
             decision,
             finalAmount: data.summary.finalAmount,
             settlementDate,
-            academicYear: data.academicYear,
+            academicYear,
           }),
         }
       );
@@ -165,14 +217,11 @@ export default function AnnualSettlementPage() {
       setDecisionResult(result.message);
       setModalType("success");
       setModalTitle(
-        decision === "PAID"
-          ? "✅ Payment Recorded"
-          : "↗️ Balance Carried Forward"
+        decision === "PAID" ? "✅ Payment Recorded" : "↗️ Balance Carried Forward"
       );
       setModalMessage(result.message);
       setModalOpen(true);
 
-      // Auto-export PDF on successful settlement
       handleExportPDF();
     } catch (err: any) {
       setModalType("error");
@@ -184,15 +233,14 @@ export default function AnnualSettlementPage() {
     }
   };
 
-  // ─── PDF Generation ──────────────────────────────────────────────────────
+  // ─── PDF Export ──────────────────────────────────────────────────────────
   const generatePDF = () => {
     if (!data) return null;
-    const { shopInfo, farmer, summary, academicYear, periodStart, status } = data;
+    const { shopInfo, farmer, summary, periodStart, status } = data;
 
     const doc = new jsPDF();
     let y = 15;
 
-    // ── Header ──
     const shopName = shopInfo?.shopName || "SMART BILLING";
     doc.setFontSize(22);
     doc.setTextColor(21, 128, 61);
@@ -209,7 +257,7 @@ export default function AnnualSettlementPage() {
     doc.setFontSize(15);
     doc.setTextColor(44, 62, 80);
     doc.setFont("helvetica", "bold");
-    doc.text("ANNUAL FINAL SETTLEMENT", 105, y, { align: "center" });
+    doc.text("ANNUAL FINAL SETTLEMENT STATEMENT", 105, y, { align: "center" });
     y += 5;
 
     doc.setDrawColor(21, 128, 61);
@@ -217,7 +265,6 @@ export default function AnnualSettlementPage() {
     doc.line(14, y, 196, y);
     y += 8;
 
-    // ── Farmer & Year Info ──
     doc.setFontSize(10);
     doc.setTextColor(0);
     doc.setFont("helvetica", "bold");
@@ -228,7 +275,11 @@ export default function AnnualSettlementPage() {
     doc.text(`Farmer ID: ${farmer.farmerNo}   Phone: ${farmer.phone}`, 14, y);
     doc.text(`Settlement Date: ${format(new Date(settlementDate), "dd/MM/yyyy")}`, 130, y);
     y += 6;
-    doc.text(`Period: ${format(new Date(periodStart), "dd/MM/yyyy")} → ${format(new Date(settlementDate), "dd/MM/yyyy")}`, 14, y);
+    doc.text(
+      `Period: ${format(new Date(periodStart), "dd/MM/yyyy")} → ${format(new Date(settlementDate), "dd/MM/yyyy")}`,
+      14,
+      y
+    );
     doc.text(`Status: ${status.replace(/_/g, " ")}`, 130, y);
     y += 8;
 
@@ -237,7 +288,6 @@ export default function AnnualSettlementPage() {
     doc.line(14, y, 196, y);
     y += 8;
 
-    // ── Helper: render section ──
     const renderSection = (
       title: string,
       items: any[],
@@ -290,7 +340,7 @@ export default function AnnualSettlementPage() {
         i.finalAmount.toFixed(2),
       ],
       [192, 57, 43],
-      "Pesticide Total",
+      "Pesticides Subtotal",
       summary.pesticidesTotal
     );
 
@@ -308,13 +358,13 @@ export default function AnnualSettlementPage() {
         i.finalAmount.toFixed(2),
       ],
       [41, 128, 185],
-      "Fertilizer Total",
+      "Fertilizers Subtotal",
       summary.fertilizersTotal
     );
 
-    // 3. Unsettled Crops
+    // 3. Money Given by Farmer — A. Unsettled Crops
     renderSection(
-      "3. Unsettled Crops (Included in Calculation — No Interest)",
+      "3. Money Given by Farmer — A. Unsettled Crop Value (0% Interest)",
       data.unsettledCrops,
       ["Log No", "Date", "Crop Type", "Weight (qtl)", "Price/qtl (Rs)", "Amount (Rs)"],
       (i) => [
@@ -326,8 +376,26 @@ export default function AnnualSettlementPage() {
         i.amount.toFixed(2),
       ],
       [39, 174, 96],
-      "Unsettled Crops Total",
+      "Unsettled Crops Subtotal",
       summary.unsettledCropsTotal
+    );
+
+    // 3. Money Given by Farmer — B. Loan Repayments
+    renderSection(
+      "3. Money Given by Farmer — B. Loan Repayments",
+      data.loanRepayments,
+      ["Receipt No", "Date", "Note", "Principal (Rs)", "Interest (Rs)", "Total (Rs)"],
+      (i) => [
+        String(i.receiptNo || "-"),
+        fmtDate(i.date),
+        i.note || "Cash Given",
+        i.amount.toFixed(2),
+        i.interest.toFixed(2),
+        i.finalAmount.toFixed(2),
+      ],
+      [39, 100, 174],
+      "Loan Repayments Subtotal",
+      summary.cashGivenTotal
     );
 
     // 4. Settled Crops (Record Only)
@@ -336,7 +404,7 @@ export default function AnnualSettlementPage() {
       doc.setFontSize(11);
       doc.setTextColor(120, 120, 120);
       doc.setFont("helvetica", "bold");
-      doc.text("4. Settled Crops — For Record Only (NOT Included in Calculation)", 14, y);
+      doc.text("4. Settled Crops — Reference Only (NOT Included in Calculation)", 14, y);
       y += 5;
 
       autoTable(doc, {
@@ -356,16 +424,16 @@ export default function AnnualSettlementPage() {
         margin: { left: 14, right: 14 },
       });
       y = (doc as any).lastAutoTable.finalY + 3;
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setFont("helvetica", "italic");
       doc.setTextColor(150);
-      doc.text("* Settled crops are shown for audit purposes only and do not affect the final calculation.", 14, y);
+      doc.text("* Settled crops contribute Rs. 0.00 to final settlement.", 14, y);
       y += 10;
     }
 
     // 5. Money Taken
     renderSection(
-      "5. Money Taken (Farmer Borrowed / Shop Loaned)",
+      "5. Money Taken (Farmer Borrowed / Shop Loans)",
       data.moneyTaken,
       ["Receipt No", "Date", "Note", "Principal (Rs)", "Interest (Rs)", "Total (Rs)"],
       (i) => [
@@ -379,24 +447,6 @@ export default function AnnualSettlementPage() {
       [211, 84, 0],
       "Money Taken Total",
       summary.cashTakenTotal
-    );
-
-    // 6. Money Given
-    renderSection(
-      "6. Money Given (Farmer Repaid / Shop Paid Farmer)",
-      data.moneyGiven,
-      ["Receipt No", "Date", "Note", "Principal (Rs)", "Interest (Rs)", "Total (Rs)"],
-      (i) => [
-        String(i.receiptNo || "-"),
-        fmtDate(i.date),
-        i.note || "Cash Given",
-        i.amount.toFixed(2),
-        i.interest.toFixed(2),
-        i.finalAmount.toFixed(2),
-      ],
-      [39, 100, 174],
-      "Money Given Total",
-      summary.cashGivenTotal
     );
 
     // ── Bottom Calculation Box ──
@@ -434,17 +484,16 @@ export default function AnnualSettlementPage() {
     doc.setFont("helvetica", "normal");
     doc.text("Money Taken", boxX, y + 45);
     doc.text(`Rs. ${summary.cashTakenTotal.toFixed(2)}`, valX, y + 45, { align: "right" });
-    doc.text("Money Given", boxX, y + 52);
+    doc.text("Money Given (Repayments)", boxX, y + 52);
     doc.text(`- Rs. ${summary.cashGivenTotal.toFixed(2)}`, valX, y + 52, { align: "right" });
 
     doc.setFont("helvetica", "bold");
     doc.line(boxX, y + 56, valX, y + 56);
-    doc.text("Net Balance", boxX, y + 63);
+    doc.text("Net Money Balance", boxX, y + 63);
     doc.text(`Rs. ${summary.netMoneyBalance.toFixed(2)}`, valX, y + 63, { align: "right" });
 
     doc.line(boxX, y + 67, valX, y + 67);
 
-    // Final result
     const fa = summary.finalAmount;
     doc.setFontSize(12);
     if (Math.abs(fa) < 0.01) {
@@ -473,90 +522,71 @@ export default function AnnualSettlementPage() {
 
   const s = data?.summary;
 
-  // ─── Helper: Section header ──────────────────────────────────────────────
-  const SectionHeader = ({
-    title,
-    count,
-    total,
-    sectionKey,
-    color = "slate",
-  }: {
-    title: string;
-    count: number;
-    total: number;
-    sectionKey: keyof typeof expandedSections;
-    color?: string;
-  }) => (
-    <button
-      onClick={() => toggleSection(sectionKey)}
-      className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all"
-    >
-      <div className="flex items-center gap-3">
-        <span className="font-semibold text-slate-700">{title}</span>
-        <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
-          {count} {count === 1 ? "entry" : "entries"}
-        </span>
-      </div>
-      <div className="flex items-center gap-4">
-        <span className="font-bold text-slate-800">₹{total.toFixed(2)}</span>
-        {expandedSections[sectionKey] ? (
-          <ChevronUp className="w-4 h-4 text-slate-500" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-slate-500" />
-        )}
-      </div>
-    </button>
-  );
-
-  // ─── Helper: Transaction Table ───────────────────────────────────────────
-  const TransactionTable = ({
-    items,
-    columns,
-    rowRenderer,
-  }: {
-    items: any[];
-    columns: string[];
-    rowRenderer: (item: any) => React.ReactNode;
-  }) => (
-    <div className="overflow-x-auto border border-slate-200 rounded-b-xl">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="bg-slate-100 text-slate-600">
-            {columns.map((col) => (
-              <th key={col} className="px-3 py-2 text-left font-semibold">
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {items.map((item, idx) => (
-            <tr key={idx} className="hover:bg-slate-50">
-              {rowRenderer(item)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-
-  const td = (val: string, cls = "") => (
-    <td className={`px-3 py-2 ${cls}`}>{val}</td>
-  );
+  // Overview filtered farmers
+  const filteredOverviewFarmers = overviewData?.farmers.filter((f: any) => {
+    const matchesSearch =
+      f.name.toLowerCase().includes(overviewSearch.toLowerCase()) ||
+      f.farmerNo.toLowerCase().includes(overviewSearch.toLowerCase());
+    if (overviewFilter === "SETTLED") return matchesSearch && f.isSettled;
+    if (overviewFilter === "UNSETTLED") return matchesSearch && !f.isSettled;
+    return matchesSearch;
+  });
 
   return (
-    <div className="max-w-5xl mx-auto h-full flex flex-col pt-8 pb-16 px-4">
-      {/* Page Title */}
-      <div className="flex items-center gap-3 mb-8">
-        <div className="bg-indigo-100 p-3 rounded-full">
-          <FileText className="w-6 h-6 text-indigo-700" />
+    <div className="max-w-5xl mx-auto h-full flex flex-col pt-6 pb-16 px-4">
+      {/* Top Header & Navigation Bar */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-100 p-3 rounded-xl text-indigo-700">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-green-950">Annual Final Settlement</h1>
+            <p className="text-slate-500 text-xs">
+              Academic Year Cycle: June 1 → May 31
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-3xl font-bold text-green-950">Annual Final Settlement</h1>
-          <p className="text-slate-500 text-sm">
-            Academic Year: 1 Jun → 31 May | Interest calculated up to settlement date
-          </p>
+
+        {/* Global Academic Year Selector */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+          <span className="text-xs font-semibold text-slate-600 pl-2">Academic Year:</span>
+          <select
+            value={academicYear}
+            onChange={(e) => handleYearChange(e.target.value)}
+            className="bg-white border border-slate-300 rounded-lg px-3 py-1.5 font-bold text-sm text-indigo-700 outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500"
+          >
+            {yearOptions.map((ay) => (
+              <option key={ay} value={ay}>
+                {ay}
+              </option>
+            ))}
+          </select>
         </div>
+      </div>
+
+      {/* Tab Switcher */}
+      <div className="flex border-b border-slate-200 mb-6 gap-2">
+        <button
+          onClick={() => setActiveTab("SETTLEMENT")}
+          className={`flex items-center gap-2 px-5 py-3 font-bold text-sm rounded-t-xl border-b-2 transition-all ${
+            activeTab === "SETTLEMENT"
+              ? "border-indigo-600 text-indigo-600 bg-indigo-50/50"
+              : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          <Search className="w-4 h-4" /> Farmer Settlement
+        </button>
+        <button
+          onClick={() => setActiveTab("OVERVIEW")}
+          className={`flex items-center gap-2 px-5 py-3 font-bold text-sm rounded-t-xl border-b-2 transition-all ${
+            activeTab === "OVERVIEW"
+              ? "border-indigo-600 text-indigo-600 bg-indigo-50/50"
+              : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" /> Settlement Overview Dashboard
+        </button>
       </div>
 
       <AlertModal
@@ -567,419 +597,601 @@ export default function AnnualSettlementPage() {
         onClose={() => setModalOpen(false)}
       />
 
-      {/* ── Search Panel ─────────────────────────────────────────────────── */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
-        <form
-          onSubmit={handleSearch}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
-        >
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700">Farmer ID</label>
-            <input
-              type="text"
-              value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
-              placeholder="e.g. F-001"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-indigo-600" /> Settlement Date
-            </label>
-            <input
-              type="date"
-              value={settlementDate}
-              onChange={(e) => handleDateChange(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 h-[42px] rounded-lg font-medium transition-all disabled:opacity-70"
-          >
-            {loading ? "Calculating..." : <><Search className="w-4 h-4" /> Calculate Account</>}
-          </button>
-        </form>
-
-        {error && (
-          <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" /> {error}
-          </div>
-        )}
-      </div>
-
-      {/* ── Results ──────────────────────────────────────────────────────── */}
-      {data && s && (
-        <div className="space-y-5">
-          {/* Farmer & Period Info */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col md:flex-row justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h2 className="text-xl font-bold text-slate-800">{data.farmer.name}</h2>
-                <span className="text-xs bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full font-bold">
-                  AY {data.academicYear}
-                </span>
-                <span
-                  className={`text-xs px-3 py-1 rounded-full font-bold uppercase ${
-                    data.status === "MANUALLY_SETTLED"
-                      ? "bg-green-100 text-green-800"
-                      : data.status === "AUTOMATICALLY_SETTLED"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-amber-100 text-amber-800"
-                  }`}
-                >
-                  {data.status.replace(/_/g, " ")}
-                </span>
-              </div>
-              <p className="text-slate-500 text-sm mt-1">
-                ID: <strong>{data.farmer.farmerNo}</strong> | Phone: {data.farmer.phone}
-              </p>
-              <p className="text-slate-400 text-xs mt-1">
-                Period: {format(new Date(data.periodStart), "dd/MM/yyyy")} →{" "}
-                {format(new Date(data.periodEnd), "dd/MM/yyyy")}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-400">Interest calculated till</p>
-              <p className="font-bold text-indigo-700 text-lg">
-                {format(new Date(settlementDate), "dd/MM/yyyy")}
-              </p>
-            </div>
-          </div>
-
-          {/* ── Section 1: Pesticides ──────────────────────────────────── */}
-          <div className="space-y-0">
-            <SectionHeader
-              title="1. Pesticides"
-              count={data.pesticides.length}
-              total={s.pesticidesTotal}
-              sectionKey="pesticides"
-            />
-            {expandedSections.pesticides && data.pesticides.length > 0 && (
-              <TransactionTable
-                items={data.pesticides}
-                columns={["Bill No", "Date", "Product", "Principal (₹)", "Interest (₹)", "Total (₹)"]}
-                rowRenderer={(i) => (
-                  <>
-                    {td(String(i.billNo || "-"))}
-                    {td(format(new Date(i.date), "dd/MM/yyyy"))}
-                    {td(i.product)}
-                    {td(i.total.toFixed(2))}
-                    {td(i.interest.toFixed(2), "text-amber-600")}
-                    {td(i.finalAmount.toFixed(2), "font-semibold")}
-                  </>
-                )}
-              />
-            )}
-            {expandedSections.pesticides && data.pesticides.length === 0 && (
-              <p className="text-sm text-slate-400 px-4 py-3 border border-t-0 border-slate-200 rounded-b-xl">No pesticide purchases this year.</p>
-            )}
-          </div>
-
-          {/* ── Section 2: Fertilizers ─────────────────────────────────── */}
-          <div className="space-y-0">
-            <SectionHeader
-              title="2. Fertilizers"
-              count={data.fertilizers.length}
-              total={s.fertilizersTotal}
-              sectionKey="fertilizers"
-            />
-            {expandedSections.fertilizers && data.fertilizers.length > 0 && (
-              <TransactionTable
-                items={data.fertilizers}
-                columns={["Bill No", "Date", "Product", "Principal (₹)", "Interest (₹)", "Total (₹)"]}
-                rowRenderer={(i) => (
-                  <>
-                    {td(String(i.billNo || "-"))}
-                    {td(format(new Date(i.date), "dd/MM/yyyy"))}
-                    {td(i.product)}
-                    {td(i.total.toFixed(2))}
-                    {td(i.interest.toFixed(2), "text-amber-600")}
-                    {td(i.finalAmount.toFixed(2), "font-semibold")}
-                  </>
-                )}
-              />
-            )}
-            {expandedSections.fertilizers && data.fertilizers.length === 0 && (
-              <p className="text-sm text-slate-400 px-4 py-3 border border-t-0 border-slate-200 rounded-b-xl">No fertilizer purchases this year.</p>
-            )}
-          </div>
-
-          {/* ── Section 3: Unsettled Crops ─────────────────────────────── */}
-          <div className="space-y-0">
-            <SectionHeader
-              title="3. Unsettled Crops (No Interest — Included in Calculation)"
-              count={data.unsettledCrops.length}
-              total={s.unsettledCropsTotal}
-              sectionKey="unsettledCrops"
-            />
-            {expandedSections.unsettledCrops && data.unsettledCrops.length > 0 && (
-              <TransactionTable
-                items={data.unsettledCrops}
-                columns={["Log No", "Date", "Crop Type", "Weight (qtl)", "Price/qtl (₹)", "Amount (₹)"]}
-                rowRenderer={(i) => (
-                  <>
-                    {td(String(i.logNo || "-"))}
-                    {td(format(new Date(i.date), "dd/MM/yyyy"))}
-                    {td(i.cropType)}
-                    {td((i.totalWeight / 100).toFixed(2))}
-                    {td((i.price || 0).toFixed(2))}
-                    {td(i.amount.toFixed(2), "font-semibold")}
-                  </>
-                )}
-              />
-            )}
-            {expandedSections.unsettledCrops && data.unsettledCrops.length === 0 && (
-              <p className="text-sm text-slate-400 px-4 py-3 border border-t-0 border-slate-200 rounded-b-xl">No unsettled crops.</p>
-            )}
-          </div>
-
-          {/* ── Section 4: Settled Crops (Record Only) ─────────────────── */}
-          {data.settledCropsForRecord.length > 0 && (
-            <div className="space-y-0 opacity-70">
-              <button
-                onClick={() => toggleSection("settledCrops")}
-                className="w-full flex items-center justify-between p-4 bg-slate-100 hover:bg-slate-200 border border-slate-300 border-dashed rounded-xl transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-slate-500">
-                    4. Settled Crops — For Record Only
-                  </span>
-                  <span className="text-xs bg-slate-300 text-slate-500 px-2 py-0.5 rounded-full">
-                    {data.settledCropsForRecord.length} entries
-                  </span>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">
-                    NOT in calculation
-                  </span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="font-bold text-slate-400">
-                    ₹{s.settledCropsTotal.toFixed(2)}
-                  </span>
-                  {expandedSections.settledCrops ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  )}
-                </div>
-              </button>
-              {expandedSections.settledCrops && (
-                <TransactionTable
-                  items={data.settledCropsForRecord}
-                  columns={["Log No", "Date", "Crop Type", "Weight (qtl)", "Amount (₹)", "Status"]}
-                  rowRenderer={(i) => (
-                    <>
-                      {td(String(i.logNo || "-"), "text-slate-400")}
-                      {td(format(new Date(i.date), "dd/MM/yyyy"), "text-slate-400")}
-                      {td(i.cropType, "text-slate-400")}
-                      {td((i.totalWeight / 100).toFixed(2), "text-slate-400")}
-                      {td(i.amount.toFixed(2), "text-slate-400 line-through")}
-                      {td("SETTLED ✓", "text-green-600 font-semibold")}
-                    </>
-                  )}
-                />
-              )}
-            </div>
-          )}
-
-          {/* ── Section 5: Money Taken ─────────────────────────────────── */}
-          <div className="space-y-0">
-            <SectionHeader
-              title="5. Money Taken (Farmer Borrowed)"
-              count={data.moneyTaken.length}
-              total={s.cashTakenTotal}
-              sectionKey="moneyTaken"
-            />
-            {expandedSections.moneyTaken && data.moneyTaken.length > 0 && (
-              <TransactionTable
-                items={data.moneyTaken}
-                columns={["Receipt No", "Date", "Note", "Principal (₹)", "Interest (₹)", "Total (₹)"]}
-                rowRenderer={(i) => (
-                  <>
-                    {td(String(i.receiptNo || "-"))}
-                    {td(format(new Date(i.date), "dd/MM/yyyy"))}
-                    {td(i.note || "Cash Taken", "text-slate-500")}
-                    {td(i.amount.toFixed(2))}
-                    {td(i.interest.toFixed(2), "text-amber-600")}
-                    {td(i.finalAmount.toFixed(2), "font-semibold")}
-                  </>
-                )}
-              />
-            )}
-            {expandedSections.moneyTaken && data.moneyTaken.length === 0 && (
-              <p className="text-sm text-slate-400 px-4 py-3 border border-t-0 border-slate-200 rounded-b-xl">No money taken transactions.</p>
-            )}
-          </div>
-
-          {/* ── Section 6: Money Given ─────────────────────────────────── */}
-          <div className="space-y-0">
-            <SectionHeader
-              title="6. Money Given (Farmer Repaid / Admin Paid)"
-              count={data.moneyGiven.length}
-              total={s.cashGivenTotal}
-              sectionKey="moneyGiven"
-            />
-            {expandedSections.moneyGiven && data.moneyGiven.length > 0 && (
-              <TransactionTable
-                items={data.moneyGiven}
-                columns={["Receipt No", "Date", "Note", "Principal (₹)", "Interest (₹)", "Total (₹)"]}
-                rowRenderer={(i) => (
-                  <>
-                    {td(String(i.receiptNo || "-"))}
-                    {td(format(new Date(i.date), "dd/MM/yyyy"))}
-                    {td(i.note || "Cash Given", "text-slate-500")}
-                    {td(i.amount.toFixed(2))}
-                    {td(i.interest.toFixed(2), "text-green-600")}
-                    {td(i.finalAmount.toFixed(2), "font-semibold text-green-700")}
-                  </>
-                )}
-              />
-            )}
-            {expandedSections.moneyGiven && data.moneyGiven.length === 0 && (
-              <p className="text-sm text-slate-400 px-4 py-3 border border-t-0 border-slate-200 rounded-b-xl">No money given transactions.</p>
-            )}
-          </div>
-
-          {/* ── Final Calculation Box ──────────────────────────────────── */}
-          <div className="bg-slate-50 border border-slate-300 rounded-2xl p-6 font-mono text-sm space-y-1 shadow-inner">
-            <div className="flex justify-between text-slate-700">
-              <span>Pesticides</span>
-              <span>₹{s.pesticidesTotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-slate-700">
-              <span>Fertilizers</span>
-              <span>₹{s.fertilizersTotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-slate-700">
-              <span>Unsettled Crops</span>
-              <span>₹{s.unsettledCropsTotal.toFixed(2)}</span>
-            </div>
-            <div className="border-t border-slate-400 my-1 pt-1 flex justify-between font-black text-slate-900">
-              <span>Total Outstanding</span>
-              <span>₹{s.totalOutstanding.toFixed(2)}</span>
-            </div>
-
-            <div className="pt-2 flex justify-between text-slate-600">
-              <span>Money Taken</span>
-              <span>₹{s.cashTakenTotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-slate-600">
-              <span>Money Given</span>
-              <span>- ₹{s.cashGivenTotal.toFixed(2)}</span>
-            </div>
-            <div className="border-t border-slate-400 my-1 pt-1 flex justify-between font-black text-slate-900">
-              <span>Net Balance</span>
-              <span>₹{s.netMoneyBalance.toFixed(2)}</span>
-            </div>
-
-            <div className="border-t-2 border-slate-500 mt-2 pt-3 text-center">
-              {Math.abs(s.finalAmount) < 0.01 ? (
-                <p className="text-green-600 font-black text-base">
-                  ✅ ACCOUNT FULLY SETTLED — ₹0.00
-                </p>
-              ) : s.finalAmount > 0 ? (
-                <div>
-                  <p className="text-red-600 font-black text-base">🔴 FARMER HAS TO PAY ADMIN</p>
-                  <p className="text-red-700 font-black text-2xl mt-1">
-                    ₹{s.finalAmount.toFixed(2)}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-green-600 font-black text-base">🟢 ADMIN HAS TO PAY FARMER</p>
-                  <p className="text-green-700 font-black text-2xl mt-1">
-                    ₹{Math.abs(s.finalAmount).toFixed(2)}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Action Buttons ─────────────────────────────────────────── */}
-          <div className="flex flex-col md:flex-row gap-4">
-            <button
-              onClick={handleExportPDF}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-6 py-4 rounded-xl font-bold text-base transition-all shadow"
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* TAB 1: FARMER SETTLEMENT                                          */}
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      {activeTab === "SETTLEMENT" && (
+        <div className="space-y-6">
+          {/* Search Form */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <form
+              onSubmit={handleSearch}
+              className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
             >
-              <Download className="w-5 h-5" /> Download PDF
-            </button>
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-700">Farmer ID</label>
+                <input
+                  type="text"
+                  value={searchId}
+                  onChange={(e) => setSearchId(e.target.value)}
+                  placeholder="e.g. F-001"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase"
+                />
+              </div>
 
-            {!data.isAlreadySettled && decisionState === "NONE" && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-700 flex items-center gap-1">
+                  <Calendar className="w-4 h-4 text-indigo-600" /> Settlement Date
+                </label>
+                <input
+                  type="date"
+                  value={settlementDate}
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
               <button
-                onClick={handleSettleAccount}
-                disabled={settling}
-                className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-4 rounded-xl font-bold text-base transition-all shadow disabled:opacity-60"
+                type="submit"
+                disabled={loading}
+                className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 h-[42px] rounded-lg font-medium transition-all disabled:opacity-70"
               >
-                {settling ? "Recording..." : <><ShieldCheck className="w-5 h-5" /> Settle Account</>}
+                {loading ? "Calculating..." : <><Search className="w-4 h-4" /> Calculate Account</>}
               </button>
+            </form>
+
+            {error && (
+              <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-lg flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" /> {error}
+              </div>
             )}
           </div>
 
-          {/* ── Payment Decision Panel ─────────────────────────────────── */}
-          {decisionState === "CHOOSING" && (
-            <div className="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-100 p-2 rounded-full">
-                  <ArrowRightLeft className="w-5 h-5 text-indigo-700" />
+          {/* Results Display */}
+          {data && s && (
+            <div className="space-y-5">
+              {/* Closed / Settled Warning Banner */}
+              {data.isAlreadySettled && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <Lock className="w-6 h-6 text-amber-700 flex-shrink-0" />
+                    <div>
+                      <p className="font-bold text-amber-900 text-sm">
+                        ⚠️ Account for Academic Year {data.academicYear} is SETTLED / CLOSED
+                      </p>
+                      <p className="text-amber-800 text-xs">
+                        Settled on {format(new Date(data.periodEnd), "dd/MM/yyyy")}. Transactions for this year are locked and will not be re-included in future years.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full uppercase">
+                    {data.status.replace(/_/g, " ")}
+                  </span>
                 </div>
+              )}
+
+              {/* Farmer Info Header */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col md:flex-row justify-between gap-4">
                 <div>
-                  <h3 className="font-bold text-indigo-900 text-lg">
-                    Settlement Recorded — Choose Payment Action
-                  </h3>
-                  <p className="text-indigo-700 text-sm">
-                    {s.finalAmount > 0
-                      ? `Farmer owes you ₹${s.finalAmount.toFixed(2)}. What do you want to do?`
-                      : s.finalAmount < 0
-                      ? `You owe farmer ₹${Math.abs(s.finalAmount).toFixed(2)}. What do you want to do?`
-                      : "Account is balanced. No payment needed."}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-xl font-bold text-slate-800">{data.farmer.name}</h2>
+                    <span className="text-xs bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full font-bold">
+                      AY {data.academicYear}
+                    </span>
+                  </div>
+                  <p className="text-slate-500 text-sm mt-1">
+                    ID: <strong>{data.farmer.farmerNo}</strong> | Phone: {data.farmer.phone}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">Interest calculated till</p>
+                  <p className="font-bold text-indigo-700 text-base">
+                    {format(new Date(settlementDate), "dd/MM/yyyy")}
                   </p>
                 </div>
               </div>
 
-              {Math.abs(s.finalAmount) < 0.01 ? (
+              {/* Section 1: Pesticides */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <button
-                  onClick={() => handleDecision("PAID")}
-                  disabled={settling}
-                  className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-bold transition-all disabled:opacity-60"
+                  onClick={() => toggleSection("pesticides")}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-all"
                 >
-                  <CheckCircle2 className="w-5 h-5" /> Confirm — Account Fully Settled
+                  <span className="font-bold text-slate-700">1. Pesticides ({data.pesticides.length})</span>
+                  <span className="font-bold text-slate-800">₹{s.pesticidesTotal.toFixed(2)}</span>
                 </button>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {expandedSections.pesticides && data.pesticides.length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Bill No</th>
+                        <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Product</th>
+                        <th className="px-3 py-2 text-right">Principal</th>
+                        <th className="px-3 py-2 text-right">Interest (₹2/mo)</th>
+                        <th className="px-3 py-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.pesticides.map((i: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-3 py-2">{i.billNo || "-"}</td>
+                          <td className="px-3 py-2">{format(new Date(i.date), "dd/MM/yyyy")}</td>
+                          <td className="px-3 py-2">{i.product}</td>
+                          <td className="px-3 py-2 text-right">₹{i.total.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right text-amber-600">₹{i.interest.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right font-bold">₹{i.finalAmount.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Section 2: Fertilizers */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <button
+                  onClick={() => toggleSection("fertilizers")}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-all"
+                >
+                  <span className="font-bold text-slate-700">2. Fertilizers ({data.fertilizers.length})</span>
+                  <span className="font-bold text-slate-800">₹{s.fertilizersTotal.toFixed(2)}</span>
+                </button>
+                {expandedSections.fertilizers && data.fertilizers.length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Bill No</th>
+                        <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Product</th>
+                        <th className="px-3 py-2 text-right">Principal</th>
+                        <th className="px-3 py-2 text-right">Interest (₹2/mo)</th>
+                        <th className="px-3 py-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.fertilizers.map((i: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-3 py-2">{i.billNo || "-"}</td>
+                          <td className="px-3 py-2">{format(new Date(i.date), "dd/MM/yyyy")}</td>
+                          <td className="px-3 py-2">{i.product}</td>
+                          <td className="px-3 py-2 text-right">₹{i.total.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right text-amber-600">₹{i.interest.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right font-bold">₹{i.finalAmount.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Section 3: Money Given by Farmer */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden space-y-2 p-4">
+                <h3 className="font-bold text-slate-800 text-base mb-2">3. Money Given by Farmer</h3>
+
+                {/* Sub-section A: Unsettled Crop Value */}
+                <div className="border border-green-200 rounded-lg overflow-hidden">
+                  <div className="p-3 bg-green-50 flex justify-between font-semibold text-green-900 text-xs">
+                    <span>A. Unsettled Crop Value (Cotton & Mirchi — 0% Interest)</span>
+                    <span>₹{s.unsettledCropsTotal.toFixed(2)}</span>
+                  </div>
+                  {data.unsettledCrops.length > 0 ? (
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Log No</th>
+                          <th className="px-3 py-2 text-left">Date</th>
+                          <th className="px-3 py-2 text-left">Crop</th>
+                          <th className="px-3 py-2 text-right">Weight (qtl)</th>
+                          <th className="px-3 py-2 text-right">Price/qtl</th>
+                          <th className="px-3 py-2 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {data.unsettledCrops.map((i: any, idx: number) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2">{i.logNo || "-"}</td>
+                            <td className="px-3 py-2">{format(new Date(i.date), "dd/MM/yyyy")}</td>
+                            <td className="px-3 py-2 font-medium">{i.cropType}</td>
+                            <td className="px-3 py-2 text-right">{(i.totalWeight / 100).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right">₹{(i.price || 0).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right font-bold text-green-700">₹{i.amount.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="text-xs text-slate-400 p-3">No unsettled crop logs for this year.</p>
+                  )}
+                </div>
+
+                {/* Sub-section B: Loan Repayments */}
+                <div className="border border-blue-200 rounded-lg overflow-hidden">
+                  <div className="p-3 bg-blue-50 flex justify-between font-semibold text-blue-900 text-xs">
+                    <span>B. Loan Repayments (Cash Given)</span>
+                    <span>₹{s.cashGivenTotal.toFixed(2)}</span>
+                  </div>
+                  {data.loanRepayments.length > 0 ? (
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Receipt No</th>
+                          <th className="px-3 py-2 text-left">Date</th>
+                          <th className="px-3 py-2 text-left">Note</th>
+                          <th className="px-3 py-2 text-right">Principal</th>
+                          <th className="px-3 py-2 text-right">Interest</th>
+                          <th className="px-3 py-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {data.loanRepayments.map((i: any, idx: number) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2">{i.receiptNo || "-"}</td>
+                            <td className="px-3 py-2">{format(new Date(i.date), "dd/MM/yyyy")}</td>
+                            <td className="px-3 py-2">{i.note || "Repayment"}</td>
+                            <td className="px-3 py-2 text-right">₹{i.amount.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right text-green-600">₹{i.interest.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-700">₹{i.finalAmount.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="text-xs text-slate-400 p-3">No loan repayments for this year.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Section 4: Settled Crops (Record Only) */}
+              {data.settledCropsForRecord.length > 0 && (
+                <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-4 opacity-75">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-semibold text-slate-600 text-xs">
+                      4. Settled Crops — Reference Only (NOT Included in Calculation)
+                    </span>
+                    <span className="text-xs text-green-700 font-bold bg-green-100 px-2 py-0.5 rounded">
+                      Contributes ₹0.00
+                    </span>
+                  </div>
+                  <table className="w-full text-xs text-slate-500">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="px-3 py-2 text-left">Log No</th>
+                        <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Crop</th>
+                        <th className="px-3 py-2 text-right">Amount</th>
+                        <th className="px-3 py-2 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.settledCropsForRecord.map((i: any, idx: number) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">{i.logNo || "-"}</td>
+                          <td className="px-3 py-2">{format(new Date(i.date), "dd/MM/yyyy")}</td>
+                          <td className="px-3 py-2">{i.cropType}</td>
+                          <td className="px-3 py-2 text-right line-through">₹{i.amount.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-green-600">SETTLED ✓</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Section 5: Money Taken */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <button
+                  onClick={() => toggleSection("moneyTaken")}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-all"
+                >
+                  <span className="font-bold text-slate-700">5. Money Taken ({data.moneyTaken.length})</span>
+                  <span className="font-bold text-slate-800">₹{s.cashTakenTotal.toFixed(2)}</span>
+                </button>
+                {expandedSections.moneyTaken && data.moneyTaken.length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Receipt No</th>
+                        <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Note</th>
+                        <th className="px-3 py-2 text-right">Principal</th>
+                        <th className="px-3 py-2 text-right">Interest (₹2/mo)</th>
+                        <th className="px-3 py-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.moneyTaken.map((i: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-3 py-2">{i.receiptNo || "-"}</td>
+                          <td className="px-3 py-2">{format(new Date(i.date), "dd/MM/yyyy")}</td>
+                          <td className="px-3 py-2">{i.note || "Cash Taken"}</td>
+                          <td className="px-3 py-2 text-right">₹{i.amount.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right text-amber-600">₹{i.interest.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right font-bold">₹{i.finalAmount.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Bottom Calculation Box */}
+              <div className="bg-slate-50 border border-slate-300 rounded-2xl p-6 font-mono text-sm space-y-1 shadow-inner">
+                <div className="flex justify-between text-slate-700">
+                  <span>Pesticides</span>
+                  <span>₹{s.pesticidesTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <span>Fertilizers</span>
+                  <span>₹{s.fertilizersTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <span>Unsettled Crops</span>
+                  <span>₹{s.unsettledCropsTotal.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-slate-400 my-1 pt-1 flex justify-between font-black text-slate-900">
+                  <span>Total Outstanding</span>
+                  <span>₹{s.totalOutstanding.toFixed(2)}</span>
+                </div>
+
+                <div className="pt-2 flex justify-between text-slate-600">
+                  <span>Money Taken</span>
+                  <span>₹{s.cashTakenTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Money Given (Repayments)</span>
+                  <span>- ₹{s.cashGivenTotal.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-slate-400 my-1 pt-1 flex justify-between font-black text-slate-900">
+                  <span>Net Money Balance</span>
+                  <span>₹{s.netMoneyBalance.toFixed(2)}</span>
+                </div>
+
+                <div className="border-t-2 border-slate-500 mt-2 pt-3 text-center">
+                  {Math.abs(s.finalAmount) < 0.01 ? (
+                    <p className="text-green-600 font-black text-base">
+                      ✅ ACCOUNT FULLY SETTLED — ₹0.00
+                    </p>
+                  ) : s.finalAmount > 0 ? (
+                    <div>
+                      <p className="text-red-600 font-black text-base">🔴 FARMER HAS TO PAY ADMIN</p>
+                      <p className="text-red-700 font-black text-2xl mt-1">
+                        ₹{s.finalAmount.toFixed(2)}
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-green-600 font-black text-base">🟢 ADMIN HAS TO PAY FARMER</p>
+                      <p className="text-green-700 font-black text-2xl mt-1">
+                        ₹{Math.abs(s.finalAmount).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col md:flex-row gap-4">
+                <button
+                  onClick={handleExportPDF}
+                  className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-6 py-4 rounded-xl font-bold text-base transition-all shadow"
+                >
+                  <Download className="w-5 h-5" /> Download PDF Statement
+                </button>
+
+                {!data.isAlreadySettled && decisionState === "NONE" && (
                   <button
-                    onClick={() => handleDecision("PAID")}
+                    onClick={handleSettleAccount}
                     disabled={settling}
-                    className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-xl font-bold transition-all disabled:opacity-60"
+                    className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-4 rounded-xl font-bold text-base transition-all shadow disabled:opacity-60"
                   >
-                    <CreditCard className="w-5 h-5" />
-                    {s.finalAmount > 0 ? "Paid by Farmer" : "Paid to Farmer"}
+                    {settling ? "Recording..." : <><ShieldCheck className="w-5 h-5" /> Settle Account</>}
                   </button>
-                  <button
-                    onClick={() => handleDecision("CARRY_FORWARD")}
-                    disabled={settling}
-                    className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-6 py-4 rounded-xl font-bold transition-all disabled:opacity-60"
-                  >
-                    <ArrowRightLeft className="w-5 h-5" /> Carry Forward to Next Year
-                  </button>
+                )}
+              </div>
+
+              {/* Payment Decision Panel */}
+              {decisionState === "CHOOSING" && (
+                <div className="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-indigo-100 p-2 rounded-full">
+                      <ArrowRightLeft className="w-5 h-5 text-indigo-700" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-indigo-900 text-lg">
+                        Settlement Recorded — Select Transfer Action
+                      </h3>
+                      <p className="text-indigo-700 text-sm">
+                        {s.finalAmount > 0
+                          ? `Farmer owes you ₹${s.finalAmount.toFixed(2)}. Choose action:`
+                          : s.finalAmount < 0
+                          ? `You owe farmer ₹${Math.abs(s.finalAmount).toFixed(2)}. Choose action:`
+                          : "Account is balanced."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      onClick={() => handleDecision("PAID")}
+                      disabled={settling}
+                      className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-xl font-bold transition-all disabled:opacity-60"
+                    >
+                      <CreditCard className="w-5 h-5" />
+                      {s.finalAmount > 0 ? "Paid by Farmer (Mark Settled)" : "Paid to Farmer (Mark Settled)"}
+                    </button>
+                    <button
+                      onClick={() => handleDecision("CARRY_FORWARD")}
+                      disabled={settling}
+                      className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-6 py-4 rounded-xl font-bold transition-all disabled:opacity-60"
+                    >
+                      <ArrowRightLeft className="w-5 h-5" /> Carry Forward to Next Year (Opening Balance)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Decision Result */}
+              {decisionState === "DECIDED" && (
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex items-center gap-4">
+                  <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-green-800">Settlement Complete</p>
+                    <p className="text-green-700 text-sm">{decisionResult}</p>
+                  </div>
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
-          {/* ── Decision Confirmed ─────────────────────────────────────── */}
-          {decisionState === "DECIDED" && (
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex items-center gap-4">
-              <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* TAB 2: SETTLEMENT OVERVIEW DASHBOARD                              */}
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      {activeTab === "OVERVIEW" && (
+        <div className="space-y-6">
+          {/* Summary Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
               <div>
-                <p className="font-bold text-green-800">Settlement Complete</p>
-                <p className="text-green-700 text-sm">{decisionResult}</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase">Total Farmers</p>
+                <p className="text-3xl font-black text-slate-800 mt-1">
+                  {overviewData?.stats.totalFarmers || 0}
+                </p>
+              </div>
+              <div className="bg-slate-100 p-3 rounded-xl text-slate-600">
+                <Users className="w-6 h-6" />
               </div>
             </div>
-          )}
+
+            <div className="bg-white p-6 rounded-2xl border border-green-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-green-600 uppercase">Settled Farmers</p>
+                <p className="text-3xl font-black text-green-700 mt-1">
+                  {overviewData?.stats.settledCount || 0}
+                </p>
+              </div>
+              <div className="bg-green-100 p-3 rounded-xl text-green-700">
+                <UserCheck className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-amber-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-amber-600 uppercase">Unsettled Farmers</p>
+                <p className="text-3xl font-black text-amber-700 mt-1">
+                  {overviewData?.stats.unsettledCount || 0}
+                </p>
+              </div>
+              <div className="bg-amber-100 p-3 rounded-xl text-amber-700">
+                <UserX className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+
+          {/* Filter & Search Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex gap-2 w-full md:w-auto">
+              <button
+                onClick={() => setOverviewFilter("ALL")}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  overviewFilter === "ALL"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                All ({overviewData?.stats.totalFarmers || 0})
+              </button>
+              <button
+                onClick={() => setOverviewFilter("SETTLED")}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  overviewFilter === "SETTLED"
+                    ? "bg-green-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Settled ({overviewData?.stats.settledCount || 0})
+              </button>
+              <button
+                onClick={() => setOverviewFilter("UNSETTLED")}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  overviewFilter === "UNSETTLED"
+                    ? "bg-amber-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Unsettled ({overviewData?.stats.unsettledCount || 0})
+              </button>
+            </div>
+
+            <div className="w-full md:w-64">
+              <input
+                type="text"
+                value={overviewSearch}
+                onChange={(e) => setOverviewSearch(e.target.value)}
+                placeholder="Search Farmer ID / Name..."
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Farmers Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            {overviewLoading ? (
+              <div className="p-8 text-center text-slate-500">Loading overview...</div>
+            ) : filteredOverviewFarmers?.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Farmer ID</th>
+                    <th className="px-4 py-3 text-left">Farmer Name</th>
+                    <th className="px-4 py-3 text-left">Phone</th>
+                    <th className="px-4 py-3 text-left">Settlement Status</th>
+                    <th className="px-4 py-3 text-right">Balance / Final Amount</th>
+                    <th className="px-4 py-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredOverviewFarmers.map((f: any) => (
+                    <tr key={f.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-bold text-indigo-700">{f.farmerNo}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{f.name}</td>
+                      <td className="px-4 py-3 text-slate-500">{f.phone}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            f.isSettled
+                              ? "bg-green-100 text-green-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {f.isSettled ? "SETTLED" : "UNSETTLED"}
+                        </span>
+                      </td>
+                      <td
+                        className={`px-4 py-3 text-right font-bold ${
+                          f.finalAmount >= 0 ? "text-slate-800" : "text-green-700"
+                        }`}
+                      >
+                        ₹{Math.abs(f.finalAmount).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => handleSelectFarmerFromOverview(f.farmerNo)}
+                          className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        >
+                          {f.isSettled ? "View Statement" : "Settle Now"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-8 text-center text-slate-400">No farmers found.</div>
+            )}
+          </div>
         </div>
       )}
     </div>

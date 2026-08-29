@@ -2,38 +2,11 @@ import { NextResponse } from "next/server";
 import { differenceInDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getAcademicYearFromDate, getAcademicYearRange } from "@/lib/academicYear";
 
-const INTEREST_RATE_PER_MONTH = 0.02; // 2% per month
+const INTEREST_RATE_PER_MONTH = 0.02; // 2% per month simple interest (₹2 per ₹100/month)
 
 export const dynamic = "force-dynamic";
-
-/**
- * Compute academic year period: 1 Jun → 31 May
- * - If the first transaction is before 1 Jun, start is 1 Jun of prior year
- * - End is always 31 May of the next year after start
- */
-function computeAcademicYear(firstDate: Date, referenceDate: Date) {
-  // Use referenceDate (settlement date) to determine which academic year we're settling
-  const refYear = referenceDate.getFullYear();
-  const refMonth = referenceDate.getMonth(); // 0-indexed
-
-  // If ref date is Jan-May, academic year started Jun of PREVIOUS year
-  // If ref date is Jun-Dec, academic year started Jun of CURRENT year
-  let startYear: number;
-  if (refMonth < 5) {
-    // Jan=0 to May=4: we're in the tail end of an academic year that started last June
-    startYear = refYear - 1;
-  } else {
-    // Jun=5 to Dec=11: we're in a new academic year that started this June
-    startYear = refYear;
-  }
-
-  const periodStart = new Date(startYear, 5, 1); // 1 June
-  const periodEnd = new Date(startYear + 1, 4, 31); // 31 May next year
-  const academicYear = `${startYear}-${String(startYear + 1).slice(2)}`; // e.g. "2025-26"
-
-  return { periodStart, periodEnd, academicYear };
-}
 
 export async function GET(
   request: Request,
@@ -49,11 +22,16 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const customSettlementDateStr = searchParams.get("settlementDate");
+    const requestedAYParam = searchParams.get("academicYear");
 
-    // Settlement date = admin-selected date, or today
+    // Reference settlement date
     const settlementDate = customSettlementDateStr
       ? new Date(customSettlementDateStr)
       : new Date();
+
+    // Academic Year
+    const academicYear = requestedAYParam || getAcademicYearFromDate(settlementDate);
+    const { startDate: periodStart, endDate: periodEnd } = getAcademicYearRange(academicYear);
 
     const farmer = await prisma.farmer.findUnique({
       where: {
@@ -75,25 +53,12 @@ export async function GET(
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
-    // Determine academic year from the settlement date
-    const allDates: Date[] = [];
-    farmer.bills.forEach((b) => allDates.push(new Date(b.date)));
-    farmer.cashTransactions.forEach((c) => allDates.push(new Date(c.date)));
-    farmer.cropLogs.forEach((c) => allDates.push(new Date(c.date)));
+    // Check if account for this academic year is already settled
+    const existingSettlement = farmer.annualSettlements.find(
+      (s) => s.academicYear === academicYear
+    );
 
-    if (allDates.length === 0) {
-      return NextResponse.json(
-        { error: "No transactions found for this farmer." },
-        { status: 400 }
-      );
-    }
-
-    allDates.sort((a, b) => a.getTime() - b.getTime());
-    const firstDate = allDates[0];
-
-    const { periodStart, periodEnd, academicYear } = computeAcademicYear(firstDate, settlementDate);
-
-    // Filter all transactions within the academic year window up to settlement date
+    // Filter transactions strictly within this academic year window (periodStart to settlementDate)
     const billsInPeriod = farmer.bills.filter(
       (b) => new Date(b.date) >= periodStart && new Date(b.date) <= settlementDate
     );
@@ -134,11 +99,9 @@ export async function GET(
         return { ...bill, days, interest, finalAmount: bill.total + interest };
       });
 
-    // ── 3. CROPS — split settled vs unsettled ────────────────────────────────
-    // IMPORTANT: Settled crops = NO contribution to financial calculation.
-    //            They appear in PDF "For Record Only".
-    // NO INTEREST on any crop (Cotton/Mirchi).
-
+    // ── 3. CROPS (UNSETTLED vs SETTLED) ──────────────────────────────────────
+    // Settled Crops: ₹0 contribution, shown For Record Only
+    // Unsettled Crops: Included in calculation, 0% interest
     let unsettledCotton = 0;
     let unsettledMirchi = 0;
     let settledCotton = 0;
@@ -159,10 +122,11 @@ export async function GET(
         const amount = (log.totalWeight / 100) * (log.price || 0);
         if (log.cropType === "COTTON") settledCotton += amount;
         else settledMirchi += amount;
-        return { ...log, amount, interest: 0, finalAmount: 0 }; // finalAmount=0: does NOT count
+        return { ...log, amount, interest: 0, finalAmount: 0 };
       });
 
     const unsettledCropsTotal = unsettledCotton + unsettledMirchi;
+    const settledCropsTotal = settledCotton + settledMirchi;
 
     // ── 4. MONEY TAKEN ────────────────────────────────────────────────────────
     let cashTakenPrincipal = 0;
@@ -178,10 +142,10 @@ export async function GET(
         return { ...cash, days, interest, finalAmount: cash.amount + interest };
       });
 
-    // ── 5. MONEY GIVEN ────────────────────────────────────────────────────────
+    // ── 5. MONEY GIVEN (LOAN REPAYMENTS) ──────────────────────────────────────
     let cashGivenPrincipal = 0;
     let cashGivenInterest = 0;
-    const moneyGiven = cashInPeriod
+    const loanRepayments = cashInPeriod
       .filter((c) => c.type === "GIVEN")
       .map((cash) => {
         const days = Math.max(0, differenceInDays(settlementDate, new Date(cash.date)));
@@ -192,35 +156,26 @@ export async function GET(
         return { ...cash, days, interest, finalAmount: cash.amount + interest };
       });
 
-    // ── FINAL CALCULATION ─────────────────────────────────────────────────────
+    // ── FINAL FORMULA ─────────────────────────────────────────────────────────
     // Total Outstanding = Pesticides + Fertilizers + Unsettled Crops
     const pesticidesTotal = pesticidesPrincipal + pesticidesInterest;
     const fertilizersTotal = fertilizersPrincipal + fertilizersInterest;
     const totalOutstanding = pesticidesTotal + fertilizersTotal + unsettledCropsTotal;
 
-    // Net Money Balance = Money Taken Total - Money Given Total
-    const cashTakenTotal = cashTakenPrincipal + cashTakenInterest;
+    // Total Money Given = Unsettled Crops + Cash Given
     const cashGivenTotal = cashGivenPrincipal + cashGivenInterest;
-    const netMoneyBalance = cashTakenTotal - cashGivenTotal;
+    const netMoneyBalance = (cashTakenPrincipal + cashTakenInterest) - cashGivenTotal;
 
     // Final Net Amount = Total Outstanding - Net Money Balance
-    // Positive → Farmer owes Admin
-    // Negative → Admin owes Farmer
+    // (Pesticides + Fertilizers + Unsettled Crops) - (Money Taken - Money Given)
+    // = Pesticides + Fertilizers + Cash Given - Money Taken
     const finalAmount = totalOutstanding - netMoneyBalance;
 
-    // ── SETTLEMENT STATUS ─────────────────────────────────────────────────────
-    const existingSettlement = farmer.annualSettlements.find(
-      (s) => s.academicYear === academicYear
-    );
-
-    let currentStatus = "PENDING";
+    let currentStatus = "UNSETTLED";
     let paymentStatus = "PENDING_DECISION";
-    const now = new Date();
     if (existingSettlement) {
       currentStatus = existingSettlement.status;
       paymentStatus = existingSettlement.paymentStatus;
-    } else if (now > periodEnd) {
-      currentStatus = "AUTOMATICALLY_SETTLED";
     }
 
     return NextResponse.json({
@@ -240,45 +195,36 @@ export async function GET(
       paymentStatus,
       isAlreadySettled: !!existingSettlement,
       existingSettlementId: existingSettlement?.id || null,
-      // Itemized transaction lists
+      existingSettlement: existingSettlement || null,
+      // Itemized sections
       pesticides,
       fertilizers,
       unsettledCrops,
       settledCropsForRecord,
       moneyTaken,
-      moneyGiven,
+      loanRepayments,
       pastSettlements: farmer.annualSettlements,
       summary: {
-        // Pesticides
         pesticidesPrincipal,
         pesticidesInterest,
         pesticidesTotal,
-        // Fertilizers
         fertilizersPrincipal,
         fertilizersInterest,
         fertilizersTotal,
-        // Unsettled Crops (NO interest)
         unsettledCotton,
         unsettledMirchi,
         unsettledCropsTotal,
-        // Settled crops (record only)
         settledCotton,
         settledMirchi,
-        settledCropsTotal: settledCotton + settledMirchi,
-        // Total Outstanding
+        settledCropsTotal,
         totalOutstanding,
-        // Money Taken
         cashTakenPrincipal,
         cashTakenInterest,
-        cashTakenTotal,
-        // Money Given
+        cashTakenTotal: cashTakenPrincipal + cashTakenInterest,
         cashGivenPrincipal,
         cashGivenInterest,
         cashGivenTotal,
-        // Net Money Balance
         netMoneyBalance,
-        // Final
-        interestRate: INTEREST_RATE_PER_MONTH * 100,
         totalInterest: pesticidesInterest + fertilizersInterest + cashTakenInterest - cashGivenInterest,
         finalAmount,
       },
@@ -335,13 +281,12 @@ export async function POST(
 
     if (existing) {
       return NextResponse.json(
-        { error: "This account has already been settled for this academic year." },
+        { error: `This farmer's account for academic year ${academicYear} is already settled.` },
         { status: 400 }
       );
     }
 
-    // Record settlement — NO automatic payment transaction yet.
-    // Admin must choose "Paid" or "Carry Forward" next.
+    // Record settlement — NO automatic payment transaction yet. Admin decides next.
     const settlement = await prisma.annualSettlement.create({
       data: {
         farmerId: farmer.id,
@@ -359,7 +304,7 @@ export async function POST(
         moneyDiff: summary.netMoneyBalance || 0,
         unsettledCrops: summary.unsettledCropsTotal || 0,
         principal: summary.totalOutstanding - summary.netMoneyBalance || 0,
-        interestRate: summary.interestRate || 2,
+        interestRate: 2,
         interestAmount: summary.totalInterest || 0,
         totalAmount: summary.finalAmount,
       },

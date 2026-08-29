@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { differenceInDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getAcademicYearFromDate, getAcademicYearRange } from "@/lib/academicYear";
-
-const INTEREST_RATE_PER_MONTH = 0.02; // 2% per month simple interest (₹2 per ₹100/month)
+import { calculateSettlement } from "@/lib/settlementCalculator";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +45,6 @@ export async function GET(
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
-    // Check if this academic year is already SETTLED
     const existingSettlement = farmer.annualSettlements.find(
       (s) => s.academicYear === academicYear
     );
@@ -65,67 +62,13 @@ export async function GET(
       (c) => new Date(c.date) >= periodStart && new Date(c.date) <= today
     );
 
-    // Process Bills - Accrues 2% simple interest
-    let totalPesticides = 0;
-    let totalFertilizers = 0;
-    let totalBillInterest = 0;
-
-    const processedBills = billsInPeriod.map((bill) => {
-      const days = Math.max(0, differenceInDays(today, new Date(bill.date)));
-      const months = days / 30;
-      const interest = bill.total * INTEREST_RATE_PER_MONTH * months;
-
-      if (bill.category === "PESTICIDE") totalPesticides += bill.total;
-      else totalFertilizers += bill.total;
-
-      totalBillInterest += interest;
-
-      return { ...bill, type: "BILL", days, interest, finalAmount: bill.total + interest };
+    // Call central calculation engine (EXACT same as Annual Settlement)
+    const calcResult = calculateSettlement({
+      bills: billsInPeriod,
+      cashTransactions: cashInPeriod,
+      cropLogs: cropsInPeriod,
+      settlementDate: today,
     });
-
-    // Process Cash (Taken = owes money, Given = paid money)
-    let totalCashTaken = 0;
-    let totalCashGiven = 0;
-    let totalCashInterest = 0;
-
-    const processedCash = cashInPeriod.map((cash) => {
-      const days = Math.max(0, differenceInDays(today, new Date(cash.date)));
-      const months = days / 30;
-      const interest = cash.amount * INTEREST_RATE_PER_MONTH * months;
-
-      if (cash.type === "TAKEN") {
-        totalCashTaken += cash.amount;
-        totalCashInterest += interest;
-        return { ...cash, days, interest, finalAmount: cash.amount + interest };
-      } else {
-        totalCashGiven += cash.amount;
-        totalCashInterest -= interest;
-        return { ...cash, days, interest, finalAmount: cash.amount + interest };
-      }
-    });
-
-    // Process Crops (Unsettled = deduction, Settled = reference only)
-    let totalUnsettledCrops = 0;
-    let totalSettledCrops = 0;
-
-    const processedCrops = cropsInPeriod.map((log) => {
-      const amount = (log.totalWeight / 100) * (log.price || 0);
-      if (!log.isSettled) {
-        totalUnsettledCrops += amount;
-      } else {
-        totalSettledCrops += amount;
-      }
-      return { ...log, amount, days: 0, interest: 0, finalAmount: amount };
-    });
-
-    const shopPurchases = totalPesticides + totalFertilizers + totalBillInterest;
-    const cashTakenTotal = totalCashTaken + (totalCashInterest > 0 ? totalCashInterest : 0);
-    const cashGivenTotal = totalCashGiven;
-    const netMoneyBalance = cashTakenTotal - cashGivenTotal;
-
-    const grandTotal = existingSettlement
-      ? existingSettlement.totalAmount
-      : shopPurchases + netMoneyBalance - totalUnsettledCrops;
 
     return NextResponse.json({
       shopInfo,
@@ -136,23 +79,7 @@ export async function GET(
       isSettled: !!existingSettlement,
       isReadOnly: !!existingSettlement,
       settlementRecord: existingSettlement || null,
-      processedBills,
-      processedCash,
-      processedCrops,
-      summary: {
-        totalPesticides,
-        totalFertilizers,
-        totalPurchases: totalPesticides + totalFertilizers,
-        totalBillInterest,
-        shopPurchases,
-        totalCashTaken,
-        totalCashGiven,
-        netMoneyBalance,
-        totalUnsettledCrops,
-        totalSettledCrops,
-        totalInterest: totalBillInterest + totalCashInterest,
-        grandTotal,
-      },
+      ...calcResult,
     });
   } catch (error: any) {
     console.error("Error calculating total final:", error);

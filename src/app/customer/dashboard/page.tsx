@@ -136,7 +136,7 @@ export default function CustomerDashboard() {
       const cashRows = data.cashTransactions.map((c: any) => [
         format(new Date(c.date), "dd/MM/yyyy"),
         c.receiptNo,
-        c.type === "TAKEN" ? "Loan Taken (Borrowing)" : "Repayment (Lending)",
+        c.type === "TAKEN" ? "Baki (బాకీ) — Taken" : "Jama (జమ) — Paid",
         `Rs. ${c.amount.toFixed(2)}`
       ]);
 
@@ -291,8 +291,8 @@ export default function CustomerDashboard() {
                       <td className="px-6 py-4 text-sm text-slate-600">{format(new Date(c.date), "dd/MM/yyyy")}</td>
                       <td className="px-6 py-4 text-sm font-medium text-slate-500">#{c.receiptNo}</td>
                       <td className="px-6 py-4 text-sm text-slate-800 flex items-center gap-2">
-                        {c.type === "TAKEN" ? <ArrowDownCircle className="w-4 h-4 text-red-500" /> : <ArrowUpCircle className="w-4 h-4 text-green-500" />}
-                        {c.type === "TAKEN" ? "Loan Taken" : "Repayment"}
+                        {c.type === "TAKEN" ? <ArrowDownCircle className="w-4 h-4 text-amber-500" /> : <ArrowUpCircle className="w-4 h-4 text-green-500" />}
+                        {c.type === "TAKEN" ? "Baki (బాకీ) — Taken" : "Jama (జమ) — Paid"}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-slate-800 text-right">Rs. {c.amount.toFixed(2)}</td>
                     </tr>

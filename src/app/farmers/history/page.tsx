@@ -181,13 +181,13 @@ export default function FarmerHistoryPage() {
       doc.setFontSize(13);
       doc.setTextColor(211, 84, 0);
       doc.setFont("helvetica", "bold");
-      doc.text("2. Cash Transactions (Loans & Repayments)", 14, currentY);
+      doc.text("2. Cash Transactions — Baki (బాకీ) & Jama (జమ)", 14, currentY);
       currentY += 4;
 
       const cashRows = dataToExport.cashTransactions.map((c: any) => [
         `#${c.receiptNo || "-"}`,
         format(new Date(c.date), "dd/MM/yyyy"),
-        c.type === "TAKEN" ? "Money Taken (Loan)" : "Money Given (Repaid)",
+        c.type === "TAKEN" ? "Baki (బాకీ) — Taken" : "Jama (జమ) — Paid",
         c.note || "-",
         `Rs ${c.amount.toFixed(2)}`,
       ]);
@@ -465,9 +465,9 @@ export default function FarmerHistoryPage() {
                         ) : (
                           <ArrowUpCircle className="w-4 h-4 text-green-600" />
                         );
-                      typeLabel = item.type === "TAKEN" ? "Money Taken" : "Money Given";
-                      details = item.note || (item.type === "TAKEN" ? "Farmer borrowed cash" : "Farmer repaid cash");
-                      amountStr = item.type === "TAKEN" ? `Owes ₹${item.amount.toFixed(2)}` : `Paid ₹${item.amount.toFixed(2)}`;
+                      typeLabel = item.type === "TAKEN" ? "Baki (బాకీ) — Taken" : "Jama (జమ) — Paid";
+                      details = item.note || (item.type === "TAKEN" ? "Farmer borrowed cash (బాకీ)" : "Farmer paid / deposited cash (జమ)");
+                      amountStr = item.type === "TAKEN" ? `Baki ₹${item.amount.toFixed(2)}` : `Jama ₹${item.amount.toFixed(2)}`;
                       amountColor = item.type === "TAKEN" ? "text-amber-700 font-medium" : "text-green-700 font-medium";
                     } else if (item.timelineType === "CROP_LOG") {
                       typeIcon = <Sprout className="w-4 h-4 text-emerald-600" />;

@@ -83,9 +83,10 @@ export default function CashSectionPage() {
 
       const data = await res.json();
       
+      const termLabel = transactionType === "TAKEN" ? "Baki (బాకీ) — Taken" : "Jama (జమ) — Paid";
       setModalType("success");
       setModalTitle("Entry Successful");
-      setModalMessage(`Cash ${transactionType.toLowerCase()} transaction recorded successfully!\nReceipt ID: ${data.receiptNo || "-"}`);
+      setModalMessage(`${termLabel} transaction recorded successfully!\nReceipt ID: ${data.receiptNo || "-"}`);
       setModalOpen(true);
 
       // Generate PDF and Send Email
@@ -110,7 +111,7 @@ export default function CashSectionPage() {
         doc.text(`Receipt No: ${receiptNo}`, 140, 40);
         doc.text(`Date: ${dateStr}`, 140, 47);
 
-        const typeStr = transactionType === "TAKEN" ? "Borrowed" : "Amount Repaid";
+        const typeStr = transactionType === "TAKEN" ? "Baki (బాకీ) — Amount Taken" : "Jama (జమ) — Amount Paid";
         const amt = parseFloat(amount).toFixed(2);
 
         doc.setFontSize(14);
@@ -126,7 +127,7 @@ export default function CashSectionPage() {
 
         const pdfBase64 = doc.output("datauristring");
 
-        const term = transactionType === "TAKEN" ? "Borrowed" : "Amount Repaid";
+        const term = transactionType === "TAKEN" ? "Baki (బాకీ) — Amount Taken" : "Jama (జమ) — Amount Paid";
         const html = `
           <h2 style="color: #15803d;">Greetings From Sri Abhinaya Fertilizers</h2>
           <p><strong>Customer Name:</strong> ${farmerInfo.name}</p>
@@ -178,7 +179,9 @@ export default function CashSectionPage() {
         </div>
         <div>
           <h1 className="text-3xl font-bold text-green-950">Cash Section</h1>
-          <p className="text-slate-500">Record cash taken by or given by farmers with photo proof.</p>
+          <p className="text-slate-500">
+            Record Baki (బాకీ — Amount Outstanding) or Jama (జమ — Amount Paid) with photo proof.
+          </p>
         </div>
       </div>
 
@@ -229,19 +232,19 @@ export default function CashSectionPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-sm text-slate-600">Transaction Type</label>
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                   <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                    transactionType === "TAKEN" ? "border-red-500 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    transactionType === "TAKEN" ? "border-amber-500 bg-amber-50 text-amber-800 font-bold" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}>
                     <input type="radio" name="type" className="hidden" checked={transactionType === "TAKEN"} onChange={() => setTransactionType("TAKEN")} />
-                    <ArrowDownCircle className="w-5 h-5" /> Taken by Farmer
+                    <ArrowDownCircle className="w-5 h-5 text-amber-600" /> Baki (బాకీ) — Taken
                   </label>
                   
                   <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                    transactionType === "GIVEN" ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    transactionType === "GIVEN" ? "border-green-500 bg-green-50 text-green-800 font-bold" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}>
                     <input type="radio" name="type" className="hidden" checked={transactionType === "GIVEN"} onChange={() => setTransactionType("GIVEN")} />
-                    <ArrowUpCircle className="w-5 h-5" /> Given by Farmer
+                    <ArrowUpCircle className="w-5 h-5 text-green-600" /> Jama (జమ) — Paid
                   </label>
                 </div>
               </div>

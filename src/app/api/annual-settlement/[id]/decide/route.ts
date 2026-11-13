@@ -97,7 +97,7 @@ export async function POST(
           type: paymentType,
           amount: absAmount,
           date: actualSettlementDate,
-          note: `Annual Settlement Payment (Paid in Full) [Ref: ${settlementId}]`,
+          note: `Annual Settlement ${paymentType === "GIVEN" ? "Jama (జమ) Payment" : "Baki (బాకీ) Payment"} in Full [Ref: ${settlementId}]`,
           photoProof: null,
         },
       });
@@ -139,7 +139,7 @@ export async function POST(
           type: carryType,
           amount: absAmount,
           date: dayAfterSettlement,
-          note: `Opening Balance — Carried Forward from Previous Cycle [Ref: ${settlementId}] (Settled on ${format(
+          note: `Opening Balance — Carried Forward ${carryType === "TAKEN" ? "Baki (బాకీ)" : "Jama (జమ)"} from Previous Cycle [Ref: ${settlementId}] (Settled on ${format(
             actualSettlementDate,
             "dd-MMM-yyyy"
           )})`,

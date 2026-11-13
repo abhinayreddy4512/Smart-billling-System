@@ -387,9 +387,9 @@ export default function AnnualSettlementPage() {
       summary.fertilizersTotal
     );
 
-    // 3. Money Given by Farmer — A. Unsettled Crops
+    // 3. Jama (జమ) by Farmer — A. Unsettled Crops
     renderSection(
-      "3. Money Given by Farmer — A. Unsettled Crop Value (0% Interest)",
+      "3. Jama (జమ) by Farmer — A. Unsettled Crop Value (0% Interest)",
       data.unsettledCrops,
       ["Log No", "Date", "Crop Type", "Weight (qtl)", "Price/qtl (Rs)", "Amount (Rs)"],
       (i) => [
@@ -405,21 +405,21 @@ export default function AnnualSettlementPage() {
       summary.unsettledCropsTotal
     );
 
-    // 3. Money Given by Farmer — B. Loan Repayments
+    // 3. Jama (జమ) by Farmer — B. Cash Paid by Farmer
     renderSection(
-      "3. Money Given by Farmer — B. Loan Repayments",
+      "3. Jama (జమ) by Farmer — B. Cash Paid / Deposited",
       data.loanRepayments,
       ["Receipt No", "Date", "Note", "Principal (Rs)", "Interest (Rs)", "Total (Rs)"],
       (i) => [
         String(i.receiptNo || "-"),
         fmtDate(i.date),
-        i.note || "Cash Given",
+        i.note || "Jama (Cash Paid)",
         i.amount.toFixed(2),
         i.interest.toFixed(2),
         i.finalAmount.toFixed(2),
       ],
       [39, 100, 174],
-      "Loan Repayments Subtotal",
+      "Jama Cash Subtotal",
       summary.cashGivenTotal
     );
 
@@ -463,21 +463,21 @@ export default function AnnualSettlementPage() {
       y += 10;
     }
 
-    // 5. Money Taken
+    // 5. Baki (బాకీ) — Loans / Amount Taken
     renderSection(
-      "5. Money Taken (Farmer Borrowed / Shop Loans)",
+      "5. Baki (బాకీ) — Amount Taken / Shop Loans",
       data.moneyTaken,
       ["Receipt No", "Date", "Note", "Principal (Rs)", "Interest (Rs)", "Total (Rs)"],
       (i) => [
         String(i.receiptNo || "-"),
         fmtDate(i.date),
-        i.note || "Cash Taken",
+        i.note || "Baki (Cash Taken)",
         i.amount.toFixed(2),
         i.interest.toFixed(2),
         i.finalAmount.toFixed(2),
       ],
       [211, 84, 0],
-      "Money Taken Total",
+      "Baki (బాకీ) Total",
       summary.cashTakenTotal
     );
 
@@ -525,18 +525,18 @@ export default function AnnualSettlementPage() {
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Money Taken", boxX, y + 43);
+    doc.text("Baki (బాకీ) — Taken", boxX, y + 43);
     doc.text(`Rs. ${(summary.cashTakenTotal || 0).toFixed(2)}`, valX, y + 43, {
       align: "right",
     });
-    doc.text("Money Given (Repayments)", boxX, y + 50);
+    doc.text("Jama (జమ) — Paid (Repayments)", boxX, y + 50);
     doc.text(`- Rs. ${(summary.cashGivenTotal || 0).toFixed(2)}`, valX, y + 50, {
       align: "right",
     });
 
     doc.setFont("helvetica", "bold");
     doc.line(boxX, y + 54, valX, y + 54);
-    doc.text("Total Loan Repayments", boxX, y + 61);
+    doc.text("Total Jama (జమ) Deductions", boxX, y + 61);
     doc.text(`Rs. ${(summary.totalLoanRepayments || 0).toFixed(2)}`, valX, y + 61, {
       align: "right",
     });
@@ -552,12 +552,12 @@ export default function AnnualSettlementPage() {
       });
     } else if (fa > 0) {
       doc.setTextColor(192, 57, 43);
-      doc.text(`FARMER HAS TO PAY ADMIN`, 105, y + 72, { align: "center" });
+      doc.text(`Baki (బాకీ) — FARMER HAS TO PAY ADMIN`, 105, y + 72, { align: "center" });
       doc.setFontSize(14);
       doc.text(`Rs. ${fa.toFixed(2)}`, 105, y + 80, { align: "center" });
     } else {
       doc.setTextColor(21, 128, 61);
-      doc.text(`ADMIN HAS TO PAY FARMER`, 105, y + 72, { align: "center" });
+      doc.text(`Jama (జమ) — ADMIN HAS TO PAY FARMER`, 105, y + 72, { align: "center" });
       doc.setFontSize(14);
       doc.text(`Rs. ${Math.abs(fa).toFixed(2)}`, 105, y + 80, { align: "center" });
     }
@@ -880,10 +880,10 @@ export default function AnnualSettlementPage() {
                 )}
               </div>
 
-              {/* Section 3: Money Given by Farmer */}
+              {/* Section 3: Jama (జమ) by Farmer */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden space-y-3 p-4 shadow-xs">
                 <h3 className="font-bold text-slate-800 text-sm">
-                  3. Money Given by Farmer (Repayments & Deductions)
+                  3. Jama (జమ) by Farmer (Amount Paid / Deposited & Deductions)
                 </h3>
 
                 {/* Sub-section A: Unsettled Crop Value */}
@@ -932,10 +932,10 @@ export default function AnnualSettlementPage() {
                   )}
                 </div>
 
-                {/* Sub-section B: Loan Repayments */}
+                {/* Sub-section B: Cash Repayments */}
                 <div className="border border-blue-200 rounded-lg overflow-hidden">
                   <div className="p-3 bg-blue-50 flex justify-between font-semibold text-blue-900 text-xs">
-                    <span>B. Loan Repayments (Cash Given)</span>
+                    <span>B. Jama (జమ) — Cash Paid by Farmer</span>
                     <span>₹{s.cashGivenTotal.toFixed(2)}</span>
                   </div>
                   {data.loanRepayments.length > 0 ? (
@@ -1021,14 +1021,14 @@ export default function AnnualSettlementPage() {
                 </div>
               )}
 
-              {/* Section 5: Money Taken */}
+              {/* Section 5: Baki (బాకీ) */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
                 <button
                   onClick={() => toggleSection("moneyTaken")}
                   className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-all text-left"
                 >
                   <span className="font-bold text-slate-800 text-sm">
-                    5. Money Taken / Loans ({data.moneyTaken.length})
+                    5. Baki (బాకీ) — Loans / Amount Taken ({data.moneyTaken.length})
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-900 text-sm">
@@ -1076,7 +1076,7 @@ export default function AnnualSettlementPage() {
                                   {i.note}
                                 </span>
                               ) : (
-                                i.note || "Cash Advance"
+                                i.note || "Baki (Advance)"
                               )}
                             </td>
                             <td className="px-3 py-2 text-right">
@@ -1116,15 +1116,15 @@ export default function AnnualSettlementPage() {
                 </div>
 
                 <div className="pt-2 flex justify-between text-slate-600">
-                  <span>Money Taken</span>
+                  <span>Baki (బాకీ) — Taken</span>
                   <span>₹{s.cashTakenTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Money Given (Repayments)</span>
+                  <span>Jama (జమ) — Paid (Repayments)</span>
                   <span>- ₹{s.cashGivenTotal.toFixed(2)}</span>
                 </div>
                 <div className="border-t border-slate-400 my-1 pt-1 flex justify-between font-black text-slate-900">
-                  <span>Total Loan Repayments</span>
+                  <span>Total Jama (జమ) Deductions</span>
                   <span>₹{s.totalLoanRepayments.toFixed(2)}</span>
                 </div>
 
@@ -1136,7 +1136,7 @@ export default function AnnualSettlementPage() {
                   ) : s.finalAmount > 0 ? (
                     <div>
                       <p className="text-red-600 font-black text-sm">
-                        🔴 FARMER HAS TO PAY ADMIN
+                        🔴 Baki (బాకీ) — FARMER HAS TO PAY ADMIN
                       </p>
                       <p className="text-red-700 font-black text-2xl mt-1">
                         ₹{s.finalAmount.toFixed(2)}
@@ -1145,7 +1145,7 @@ export default function AnnualSettlementPage() {
                   ) : (
                     <div>
                       <p className="text-green-600 font-black text-sm">
-                        🟢 ADMIN HAS TO PAY FARMER
+                        🟢 Jama (జమ) — ADMIN HAS TO PAY FARMER
                       </p>
                       <p className="text-green-700 font-black text-2xl mt-1">
                         ₹{Math.abs(s.finalAmount).toFixed(2)}

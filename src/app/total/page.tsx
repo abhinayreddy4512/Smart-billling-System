@@ -140,8 +140,8 @@ export default function TotalFinalPage() {
 
     renderTable("1. Pesticides", pesticides, [192, 57, 43]);
     renderTable("2. Fertilizers", fertilizers, [41, 128, 185]);
-    renderTable("3. Money Taken (Loans/Borrowed)", cashTaken, [211, 84, 0]);
-    renderTable("4. Money Given (Loan Repayments)", cashGiven, [39, 174, 96]);
+    renderTable("3. Baki (బాకీ) — Loans / Amount Taken", cashTaken, [211, 84, 0]);
+    renderTable("4. Jama (జమ) — Amount Paid by Farmer", cashGiven, [39, 174, 96]);
     renderTable("5. Unsettled Crops (0% Interest)", unsettledCrops, [39, 174, 96]);
 
     if (settledCrops.length > 0) {
@@ -188,7 +188,7 @@ export default function TotalFinalPage() {
     doc.text("Shop Purchases", 20, startY + 12);
     doc.text(`Rs. ${(summary.shopPurchases || summary.shopPurchasesTotal || 0).toFixed(2)}`, 186, startY + 12, { align: "right" });
 
-    doc.text("Net Money Balance", 20, startY + 20);
+    doc.text("Net Cash (Baki బాకీ - Jama జమ)", 20, startY + 20);
     doc.text(`Rs. ${(summary.netMoneyBalance || 0).toFixed(2)}`, 186, startY + 20, { align: "right" });
 
     doc.text("Unsettled Crops", 20, startY + 28);
@@ -210,7 +210,7 @@ export default function TotalFinalPage() {
     const isPayableByFarmer = (finalVal || 0) >= 0;
     doc.setTextColor(isPayableByFarmer ? 192 : 39, isPayableByFarmer ? 57 : 174, isPayableByFarmer ? 43 : 96);
     doc.text(
-      isPayableByFarmer ? "PAYABLE BY FARMER (Owes Shop)" : "PAYABLE TO FARMER (Shop Owes)",
+      isPayableByFarmer ? "Baki (బాకీ) — PAYABLE BY FARMER (Owes Shop)" : "Jama (జమ) — PAYABLE TO FARMER (Shop Owes)",
       103,
       startY + 57,
       { align: "center" }
@@ -332,8 +332,8 @@ export default function TotalFinalPage() {
               </p>
               <p className="text-xs text-green-300 mt-1">
                 {(data.summary.finalAmount !== undefined ? data.summary.finalAmount : data.summary.grandTotal) >= 0
-                  ? "Farmer owes shop"
-                  : "Shop owes farmer"}
+                  ? "Baki (బాకీ) — Farmer owes shop"
+                  : "Jama (జమ) — Shop owes farmer"}
               </p>
             </div>
           </div>

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -34,7 +34,7 @@ model Farmer {
   name             String
   phone            String
   email            String?
-  photoUrl         String?           @db.LongText
+  photoUrl         String?           @db.Text
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   
@@ -69,7 +69,7 @@ model Bill {
   quantity   Int
   price      Float
   total      Float
-  photoProof String?  @db.LongText
+  photoProof String?  @db.Text
   date       DateTime @default(now())
 }
 
@@ -80,7 +80,7 @@ model CashTransaction {
   farmer     Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   type       String   // 'TAKEN' or 'GIVEN'
   amount     Float
-  photoProof String?  @db.LongText
+  photoProof String?  @db.Text
   note       String?  // e.g. 'Annual Settlement Payment', 'Carry Forward from 2025-26'
   date       DateTime @default(now())
 }

@@ -8,55 +8,78 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  shopName  String?
-  ownerName String?
-  phone     String?
-  gstNo     String?
-  village   String?
-  mandal    String?
-  district  String?
-  state     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  farmers   Farmer[]
-  products  Product[]
+  id             String          @id @default(cuid())
+  email          String          @unique
+  password       String
+  name           String?
+  shopName       String?
+  ownerName      String?
+  phone          String?
+  gstNo          String?
+  village        String?
+  mandal         String?
+  district       String?
+  state          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  farmers        Farmer[]
+  products       Product[]
+  stockMovements StockMovement[]
 }
 
 model Farmer {
-  id               String            @id @default(cuid())
-  farmerNo         String            // e.g. "1001"
-  userId           String
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name             String
-  phone            String
-  email            String?
-  photoUrl         String?           @db.Text
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                String             @id @default(cuid())
+  farmerNo          String             // e.g. "1001"
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  phone             String
+  email             String?
+  photoUrl          String?            @db.Text
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   
   @@unique([userId, farmerNo])
-  bills              Bill[]
-  cashTransactions   CashTransaction[]
-  cropLogs           CropLog[]
-  cropSettlements    CropSettlement[]
-  annualSettlements  AnnualSettlement[]
+  bills             Bill[]
+  cashTransactions  CashTransaction[]
+  cropLogs          CropLog[]
+  cropSettlements   CropSettlement[]
+  annualSettlements AnnualSettlement[]
 }
 
 model Product {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category  String   // 'FERTILIZER' or 'PESTICIDE'
-  name      String
-  size      String?  // '50kg', '1 Litre', etc.
-  quantity  Int      @default(0) // Number of items
-  price     Float    @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category       String          // 'FERTILIZER' or 'PESTICIDE'
+  name           String
+  size           String?         // '50kg', '1 Litre', etc.
+  quantity       Int             @default(0) // Number of items
+  price          Float           @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  stockMovements StockMovement[]
+}
+
+model StockMovement {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId    String?
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  category     String   // 'FERTILIZER' or 'PESTICIDE'
+  productName  String
+  size         String?
+  movementType String   // 'RECEIVED' | 'OPENING_BALANCE' | 'ADJUSTMENT'
+  quantity     Int
+  price        Float    @default(0)
+  date         DateTime @default(now())
+  businessYear String   // e.g. "2025-26", "2026-27" (May-April)
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, category])
+  @@index([userId, businessYear])
 }
 
 model Bill {
@@ -113,7 +136,7 @@ model AnnualSettlement {
   farmer             Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   periodStart        DateTime
   periodEnd          DateTime
-  academicYear       String   @default("") // e.g. "2025-26"
+  academicYear       String   @default("") // Cycle label or year
   status             String   @default("MANUALLY_SETTLED") // "MANUALLY_SETTLED" | "AUTOMATICALLY_SETTLED"
   paymentStatus      String   @default("PENDING_DECISION") // "PENDING_DECISION" | "PAID" | "CARRIED_FORWARD"
   totalPurchases     Float    @default(0)

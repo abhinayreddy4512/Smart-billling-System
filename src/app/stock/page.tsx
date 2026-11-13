@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PackageSearch, Plus, Package } from "lucide-react";
+import Link from "next/link";
+import { PackageSearch, Plus, Package, Boxes, ArrowRight } from "lucide-react";
 import { AlertModal } from "@/components/ui/AlertModal";
 
 export default function StockUpdatesPage() {
@@ -77,14 +78,23 @@ export default function StockUpdatesPage() {
 
   return (
     <div className="max-w-6xl mx-auto h-full flex flex-col pt-8 pb-12">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="bg-amber-100 p-3 rounded-full">
-          <PackageSearch className="w-6 h-6 text-amber-600" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-3">
+          <div className="bg-amber-100 p-3 rounded-full">
+            <PackageSearch className="w-6 h-6 text-amber-600" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-green-950">Stock Updates</h1>
+            <p className="text-slate-500">Manage your fertilizers and pesticides inventory.</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-3xl font-bold text-green-950">Stock Updates</h1>
-          <p className="text-slate-500">Manage your fertilizers and pesticides inventory.</p>
-        </div>
+
+        <Link
+          href="/stock/history"
+          className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-lg font-medium transition-all shadow-sm text-sm self-start sm:self-auto"
+        >
+          <Boxes className="w-4 h-4" /> View Annual Stock History <ArrowRight className="w-4 h-4" />
+        </Link>
       </div>
 
       <AlertModal

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-
+import { getMayAprilBusinessYear } from "@/lib/academicYear";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export async function GET() {
 
     const products = await prisma.product.findMany({
       where: { userId: session.user.id },
-      orderBy: { createdAt: "desc" },
+      orderBy: { name: "asc" },
     });
     return NextResponse.json(products);
   } catch (error) {
@@ -37,15 +37,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const product = await prisma.product.create({
-      data: {
-        userId: session.user.id,
-        category,
-        name,
-        size: size || null,
-        quantity: parseInt(quantity, 10),
-        price: parseFloat(price),
-      },
+    const parsedQty = parseInt(quantity, 10);
+    const parsedPrice = parseFloat(price);
+    const businessYear = getMayAprilBusinessYear(new Date());
+
+    // Create product and corresponding stock movement
+    const product = await prisma.$transaction(async (tx) => {
+      const p = await tx.product.create({
+        data: {
+          userId: session.user.id,
+          category,
+          name: name.trim(),
+          size: size?.trim() || null,
+          quantity: parsedQty,
+          price: parsedPrice,
+        },
+      });
+
+      // Record initial stock receipt / opening balance
+      await tx.stockMovement.create({
+        data: {
+          userId: session.user.id,
+          productId: p.id,
+          category,
+          productName: p.name,
+          size: p.size,
+          movementType: "RECEIVED",
+          quantity: parsedQty,
+          price: parsedPrice,
+          businessYear,
+          note: "Initial Product Stock Entry",
+        },
+      });
+
+      return p;
     });
 
     return NextResponse.json(product, { status: 201 });

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getAcademicYearRange } from "@/lib/academicYear";
+import {
+  getFarmerAccountingCycles,
+  filterTransactionsForCycle,
+} from "@/lib/cycleManager";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +20,7 @@ export async function GET(
     }
 
     const { searchParams } = new URL(request.url);
-    const requestedAY = searchParams.get("academicYear") || "ALL";
-
-    let dateFilter: { gte?: Date; lte?: Date } | undefined = undefined;
-    if (requestedAY !== "ALL") {
-      const { startDate, endDate } = getAcademicYearRange(requestedAY);
-      dateFilter = { gte: startDate, lte: endDate };
-    }
+    const requestedCycleId = searchParams.get("cycleId") || "ALL";
 
     const farmer = await prisma.farmer.findUnique({
       where: {
@@ -33,26 +30,11 @@ export async function GET(
         },
       },
       include: {
-        bills: {
-          where: dateFilter ? { date: dateFilter } : undefined,
-          orderBy: { date: "desc" },
-        },
-        cashTransactions: {
-          where: dateFilter ? { date: dateFilter } : undefined,
-          orderBy: { date: "desc" },
-        },
-        cropLogs: {
-          where: dateFilter ? { date: dateFilter } : undefined,
-          orderBy: { date: "desc" },
-        },
-        cropSettlements: {
-          where: dateFilter ? { date: dateFilter } : undefined,
-          orderBy: { date: "desc" },
-        },
-        annualSettlements: {
-          where: requestedAY !== "ALL" ? { academicYear: requestedAY } : undefined,
-          orderBy: { createdAt: "desc" },
-        },
+        bills: { orderBy: { date: "desc" } },
+        cashTransactions: { orderBy: { date: "desc" } },
+        cropLogs: { orderBy: { date: "desc" } },
+        cropSettlements: { orderBy: { date: "desc" } },
+        annualSettlements: { orderBy: { periodEnd: "desc" } },
       },
     });
 
@@ -60,9 +42,48 @@ export async function GET(
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
+    // Compute cycles
+    const allCycles = getFarmerAccountingCycles(farmer);
+
+    let filteredBills = farmer.bills;
+    let filteredCash = farmer.cashTransactions;
+    let filteredCrops = farmer.cropLogs;
+    let filteredSettlements = farmer.annualSettlements;
+
+    if (requestedCycleId !== "ALL") {
+      const selectedCycle = allCycles.find((c) => c.id === requestedCycleId);
+      if (selectedCycle) {
+        const { bills, cashTransactions, cropLogs } = filterTransactionsForCycle(
+          farmer,
+          selectedCycle
+        );
+        filteredBills = bills;
+        filteredCash = cashTransactions;
+        filteredCrops = cropLogs;
+        filteredSettlements = selectedCycle.isClosed
+          ? farmer.annualSettlements.filter((s) => s.id === selectedCycle.id)
+          : [];
+      }
+    }
+
     return NextResponse.json({
       ...farmer,
-      academicYear: requestedAY,
+      bills: filteredBills,
+      cashTransactions: filteredCash,
+      cropLogs: filteredCrops,
+      annualSettlements: filteredSettlements,
+      selectedCycleId: requestedCycleId,
+      allCycles: allCycles.map((c) => ({
+        id: c.id,
+        cycleNumber: c.cycleNumber,
+        label: c.label,
+        shortLabel: c.shortLabel,
+        startDate: c.startDate.toISOString(),
+        endDate: c.endDate.toISOString(),
+        isClosed: c.isClosed,
+        status: c.status,
+        paymentStatus: c.paymentStatus,
+      })),
     });
   } catch (error) {
     console.error("Error fetching farmer history:", error);

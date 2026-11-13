@@ -11,6 +11,7 @@ import {
   Sprout, 
   Calculator,
   FileText,
+  Boxes,
   LogOut,
   Menu,
   X
@@ -22,6 +23,7 @@ const navItems = [
   { name: "Add Farmers", href: "/farmers/add", icon: Users },
   { name: "Farmer History", href: "/farmers/history", icon: History },
   { name: "Stock Updates", href: "/stock", icon: PackageSearch },
+  { name: "Stock History", href: "/stock/history", icon: Boxes },
   { name: "Billing", href: "/billing", icon: Receipt },
   { name: "Cash Section", href: "/cash", icon: Banknote },
   { name: "Cotton & Mirchi", href: "/crops", icon: Sprout },

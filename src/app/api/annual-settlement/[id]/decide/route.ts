@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { addDays, startOfDay, format } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/annual-settlement/[id]/decide
  *
- * Handles the "Paid by Farmer" or "Carry Forward" decision after a settlement
- * has been calculated and recorded.
+ * Handles the "Paid by Farmer" or "Carry Forward" decision after an annual settlement
+ * has been recorded.
  *
  * Body: {
  *   settlementId: string,
  *   decision: "PAID" | "CARRY_FORWARD",
- *   finalAmount: number,   // positive = farmer owes admin, negative = admin owes farmer
+ *   finalAmount: number,    // positive = farmer owes admin, negative = admin owes farmer
  *   settlementDate: string, // ISO date string
- *   academicYear: string,  // e.g. "2025-26"
  * }
  */
 export async function POST(
@@ -30,10 +30,13 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { settlementId, decision, finalAmount, settlementDate, academicYear } = body;
+    const { settlementId, decision, finalAmount, settlementDate } = body;
 
     if (!settlementId || !decision) {
-      return NextResponse.json({ error: "settlementId and decision are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "settlementId and decision are required" },
+        { status: 400 }
+      );
     }
 
     const farmer = await prisma.farmer.findUnique({
@@ -49,14 +52,36 @@ export async function POST(
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
-    const actualSettlementDate = settlementDate ? new Date(settlementDate) : new Date();
+    const settlement = await prisma.annualSettlement.findUnique({
+      where: { id: settlementId },
+    });
+
+    if (!settlement) {
+      return NextResponse.json(
+        { error: "Settlement record not found" },
+        { status: 404 }
+      );
+    }
+
+    if (settlement.paymentStatus !== "PENDING_DECISION") {
+      return NextResponse.json(
+        {
+          error: `This settlement has already been processed as ${settlement.paymentStatus}. Duplicate decisions are prevented.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const actualSettlementDate = settlementDate
+      ? new Date(settlementDate)
+      : new Date(settlement.periodEnd);
     const absAmount = Math.abs(finalAmount);
 
     let generatedReceiptNo: number | null = null;
     let carryForwardReceiptNo: number | null = null;
 
     if (decision === "PAID") {
-      // Record payment transaction / zero-value documentary receipt on settlement date
+      // Record payment on settlement date
       const paymentType = finalAmount > 0 ? "GIVEN" : "TAKEN";
 
       const lastCash = await prisma.cashTransaction.findFirst({
@@ -65,7 +90,6 @@ export async function POST(
       });
       generatedReceiptNo = (lastCash?.receiptNo || 0) + 1;
 
-      // Always create a receipt record (with zero amount if fully settled or actual payment amount)
       await prisma.cashTransaction.create({
         data: {
           receiptNo: generatedReceiptNo,
@@ -73,12 +97,11 @@ export async function POST(
           type: paymentType,
           amount: absAmount,
           date: actualSettlementDate,
-          note: `Annual Settlement Payment — ${academicYear} (Paid in Full) [Ref: ${settlementId}]`,
+          note: `Annual Settlement Payment (Paid in Full) [Ref: ${settlementId}]`,
           photoProof: null,
         },
       });
 
-      // Update settlement record
       await prisma.annualSettlement.update({
         where: { id: settlementId },
         data: {
@@ -90,19 +113,17 @@ export async function POST(
       return NextResponse.json({
         success: true,
         action: "PAID",
-        message: absAmount > 0.01
-          ? `Payment of ₹${absAmount.toFixed(2)} recorded. Account settled for ${academicYear}.`
-          : `Account settled with zero balance for ${academicYear}. Zero-value receipt created.`,
+        message:
+          absAmount > 0.01
+            ? `Payment of ₹${absAmount.toFixed(
+                2
+              )} recorded. Accounting cycle is now closed and fully settled.`
+            : `Accounting cycle settled with zero balance. Settlement closed successfully.`,
         receiptNo: generatedReceiptNo,
       });
     } else if (decision === "CARRY_FORWARD") {
-      // Create an opening balance transaction on 1 June of the NEXT academic year
-      const [startYearStr] = (academicYear || "").split("-");
-      const startYear = parseInt(startYearStr, 10);
-      const nextYearStartDate = isNaN(startYear)
-        ? new Date(actualSettlementDate.getFullYear() + 1, 5, 1)
-        : new Date(startYear + 1, 5, 1); // 1 June of next year
-
+      // Transfer balance to next cycle starting on the DAY AFTER settlement date
+      const dayAfterSettlement = startOfDay(addDays(actualSettlementDate, 1));
       const carryType = finalAmount > 0 ? "TAKEN" : "GIVEN";
 
       const lastCash = await prisma.cashTransaction.findFirst({
@@ -117,13 +138,15 @@ export async function POST(
           farmerId: farmer.id,
           type: carryType,
           amount: absAmount,
-          date: nextYearStartDate,
-          note: `Previous Year Carry Forward (${academicYear}) [Ref: ${settlementId}]`,
+          date: dayAfterSettlement,
+          note: `Opening Balance — Carried Forward from Previous Cycle [Ref: ${settlementId}] (Settled on ${format(
+            actualSettlementDate,
+            "dd-MMM-yyyy"
+          )})`,
           photoProof: null,
         },
       });
 
-      // Update settlement record
       await prisma.annualSettlement.update({
         where: { id: settlementId },
         data: {
@@ -135,12 +158,20 @@ export async function POST(
       return NextResponse.json({
         success: true,
         action: "CARRY_FORWARD",
-        message: `₹${absAmount.toFixed(2)} carried forward to next year (${startYear + 1}-${String(startYear + 2).slice(2)}) as opening balance from 01-Jun-${startYear + 1}.`,
+        message: `₹${absAmount.toFixed(
+          2
+        )} carried forward to the next accounting cycle starting on ${format(
+          dayAfterSettlement,
+          "dd-MMM-yyyy"
+        )} as an Opening Balance transaction.`,
         receiptNo: carryForwardReceiptNo,
-        nextYearStartDate: nextYearStartDate.toISOString(),
+        nextCycleStartDate: dayAfterSettlement.toISOString(),
       });
     } else {
-      return NextResponse.json({ error: "Invalid decision. Must be PAID or CARRY_FORWARD." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid decision. Must be PAID or CARRY_FORWARD." },
+        { status: 400 }
+      );
     }
   } catch (error: any) {
     console.error("Error processing settlement decision:", error);

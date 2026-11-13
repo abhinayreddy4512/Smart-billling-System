@@ -150,6 +150,11 @@ export function calculateSettlement({
         fertilizersInterest +
         cashTakenInterest -
         cashGivenInterest,
+      totalOutstanding: totalLiabilities,
+      netMoneyBalance: cashTakenTotal - cashGivenTotal,
+      shopPurchases: shopPurchasesTotal,
+      grandTotal: finalAmount,
+      totalUnsettledCrops: unsettledCropsTotal,
       finalAmount,
     },
   };

@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getAcademicYearFromDate, getAcademicYearRange } from "@/lib/academicYear";
 import { calculateSettlement } from "@/lib/settlementCalculator";
+import {
+  getFarmerAccountingCycles,
+  filterTransactionsForCycle,
+} from "@/lib/cycleManager";
+import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +24,11 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const customSettlementDateStr = searchParams.get("settlementDate");
-    const requestedAYParam = searchParams.get("academicYear");
+    const requestedCycleId = searchParams.get("cycleId") || "active";
 
     const settlementDate = customSettlementDateStr
       ? new Date(customSettlementDateStr)
       : new Date();
-
-    const academicYear = requestedAYParam || getAcademicYearFromDate(settlementDate);
-    const { startDate: periodStart, endDate: periodEnd } = getAcademicYearRange(academicYear);
 
     const farmer = await prisma.farmer.findUnique({
       where: {
@@ -40,7 +41,7 @@ export async function GET(
         bills: { orderBy: { date: "asc" } },
         cashTransactions: { orderBy: { date: "asc" } },
         cropLogs: { orderBy: { date: "asc" } },
-        annualSettlements: { orderBy: { createdAt: "desc" } },
+        annualSettlements: { orderBy: { periodEnd: "desc" } },
       },
     });
 
@@ -48,37 +49,31 @@ export async function GET(
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
-    const existingSettlement = farmer.annualSettlements.find(
-      (s) => s.academicYear === academicYear
+    // Dynamically compute all accounting cycles for this farmer
+    const allCycles = getFarmerAccountingCycles(farmer, settlementDate);
+
+    // Pick target cycle
+    const targetCycle =
+      allCycles.find((c) => c.id === requestedCycleId) ||
+      allCycles.find((c) => !c.isClosed) ||
+      allCycles[allCycles.length - 1];
+
+    // Filter transactions strictly for this cycle
+    const { bills, cashTransactions, cropLogs } = filterTransactionsForCycle(
+      farmer,
+      targetCycle
     );
 
-    // Filter transactions strictly within this academic year window (periodStart to settlementDate)
-    const billsInPeriod = farmer.bills.filter(
-      (b) => new Date(b.date) >= periodStart && new Date(b.date) <= settlementDate
-    );
-
-    const cashInPeriod = farmer.cashTransactions.filter(
-      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= settlementDate
-    );
-
-    const cropsInPeriod = farmer.cropLogs.filter(
-      (c) => new Date(c.date) >= periodStart && new Date(c.date) <= settlementDate
-    );
-
-    // Call unified calculation engine
+    // Run central calculation engine
     const calcResult = calculateSettlement({
-      bills: billsInPeriod,
-      cashTransactions: cashInPeriod,
-      cropLogs: cropsInPeriod,
-      settlementDate,
+      bills,
+      cashTransactions,
+      cropLogs,
+      settlementDate: targetCycle.isClosed ? targetCycle.endDate : settlementDate,
     });
 
-    let currentStatus = "UNSETTLED";
-    let paymentStatus = "PENDING_DECISION";
-    if (existingSettlement) {
-      currentStatus = existingSettlement.status;
-      paymentStatus = existingSettlement.paymentStatus;
-    }
+    const isAlreadySettled = targetCycle.isClosed;
+    const existingSettlement = targetCycle.settlement || null;
 
     return NextResponse.json({
       shopInfo,
@@ -88,16 +83,35 @@ export async function GET(
         name: farmer.name,
         phone: farmer.phone,
         email: farmer.email,
+        createdAt: farmer.createdAt,
       },
-      academicYear,
-      periodStart: periodStart.toISOString(),
-      periodEnd: periodEnd.toISOString(),
+      cycle: {
+        id: targetCycle.id,
+        cycleNumber: targetCycle.cycleNumber,
+        label: targetCycle.label,
+        shortLabel: targetCycle.shortLabel,
+        startDate: targetCycle.startDate.toISOString(),
+        endDate: targetCycle.endDate.toISOString(),
+        isClosed: targetCycle.isClosed,
+      },
+      allCycles: allCycles.map((c) => ({
+        id: c.id,
+        cycleNumber: c.cycleNumber,
+        label: c.label,
+        shortLabel: c.shortLabel,
+        startDate: c.startDate.toISOString(),
+        endDate: c.endDate.toISOString(),
+        isClosed: c.isClosed,
+        status: c.status,
+        paymentStatus: c.paymentStatus,
+        totalAmount: c.settlement?.totalAmount,
+      })),
       settlementDate: settlementDate.toISOString(),
-      status: currentStatus,
-      paymentStatus,
-      isAlreadySettled: !!existingSettlement,
+      status: targetCycle.status,
+      paymentStatus: targetCycle.paymentStatus,
+      isAlreadySettled,
       existingSettlementId: existingSettlement?.id || null,
-      existingSettlement: existingSettlement || null,
+      existingSettlement,
       ...calcResult,
     });
   } catch (error: any) {
@@ -121,14 +135,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const {
-      academicYear,
-      periodStart,
-      periodEnd,
-      settlementDate,
-      status = "MANUALLY_SETTLED",
-      summary,
-    } = body;
+    const { settlementDate, status = "MANUALLY_SETTLED", summary } = body;
 
     const farmer = await prisma.farmer.findUnique({
       where: {
@@ -137,31 +144,60 @@ export async function POST(
           farmerNo: id.toUpperCase(),
         },
       },
+      include: {
+        bills: { orderBy: { date: "asc" } },
+        cashTransactions: { orderBy: { date: "asc" } },
+        cropLogs: { orderBy: { date: "asc" } },
+        annualSettlements: { orderBy: { periodEnd: "desc" } },
+      },
     });
 
     if (!farmer) {
       return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
     }
 
-    const actualSettlementDate = settlementDate ? new Date(settlementDate) : new Date();
+    const actualSettlementDate = settlementDate
+      ? new Date(settlementDate)
+      : new Date();
 
-    const existing = await prisma.annualSettlement.findFirst({
-      where: { farmerId: farmer.id, academicYear: academicYear || "" },
-    });
+    // Compute cycles
+    const allCycles = getFarmerAccountingCycles(farmer, actualSettlementDate);
+    const activeCycle = allCycles.find((c) => !c.isClosed);
 
-    if (existing) {
+    if (!activeCycle) {
       return NextResponse.json(
-        { error: `This farmer's account for academic year ${academicYear} is already settled.` },
+        { error: "No active accounting cycle found for this farmer." },
         { status: 400 }
       );
     }
 
+    // Check if settlement date is before cycle start date
+    if (actualSettlementDate < activeCycle.startDate) {
+      return NextResponse.json(
+        {
+          error: `Settlement date (${format(
+            actualSettlementDate,
+            "dd-MMM-yyyy"
+          )}) cannot be earlier than the active cycle start date (${format(
+            activeCycle.startDate,
+            "dd-MMM-yyyy"
+          )}).`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const cycleLabel = `Cycle ${activeCycle.cycleNumber} (${format(
+      activeCycle.startDate,
+      "dd MMM yyyy"
+    )} – ${format(actualSettlementDate, "dd MMM yyyy")})`;
+
     const settlement = await prisma.annualSettlement.create({
       data: {
         farmerId: farmer.id,
-        periodStart: new Date(periodStart),
+        periodStart: activeCycle.startDate,
         periodEnd: actualSettlementDate,
-        academicYear: academicYear || "",
+        academicYear: cycleLabel,
         status,
         paymentStatus: "PENDING_DECISION",
         totalPurchases: summary.shopPurchasesTotal || 0,
@@ -179,7 +215,11 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ settlement, needsDecision: true });
+    return NextResponse.json({
+      settlement,
+      cycleLabel,
+      needsDecision: true,
+    });
   } catch (error: any) {
     console.error("Error saving annual settlement:", error);
     return NextResponse.json(

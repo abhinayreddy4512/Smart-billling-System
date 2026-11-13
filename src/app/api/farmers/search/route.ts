@@ -23,7 +23,7 @@ export async function GET(request: Request) {
         userId: session.user.id,
         OR: [
           { farmerNo: { contains: query } },
-          { name: { contains: query, mode: 'insensitive' } },
+          { name: { contains: query } },
           { phone: { contains: query } },
         ],
       },
